@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createColumnHelper } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -9,6 +9,7 @@ import { DataTable } from "@/components/shared/DataTable";
 import { OS_CONCEPTS } from "@/constants/osConcepts";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import api from "@/lib/api";
 import {
   Plus,
   X,
@@ -62,7 +63,18 @@ const ALL_FEATURES = [
 const columnHelper = createColumnHelper<Lab>();
 
 export default function LabsPage() {
-  const [labs, setLabs] = useState<Lab[]>(DEMO_LABS);
+  const [labs, setLabs] = useState<Lab[]>([]);
+
+  useEffect(() => {
+    api.get("/resources", { params: { type: "lab" } }).then(res => {
+      setLabs(res.data.map((r: Record<string, unknown>) => ({
+        id: String(r.id), name: r.name, building: r.building, floor: r.floor,
+        capacity: r.capacity, status: r.status || "available",
+        software: Array.isArray(r.features) ? r.features : [],
+        computers: r.capacity || 30,
+      })));
+    }).catch(() => toast.error("Failed to load labs"));
+  }, []);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLab, setEditingLab] = useState<Lab | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);

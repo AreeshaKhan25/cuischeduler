@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createColumnHelper } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -10,6 +10,7 @@ import { DataTable } from "@/components/shared/DataTable";
 import { OS_CONCEPTS } from "@/constants/osConcepts";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import api from "@/lib/api";
 import {
   Plus,
   X,
@@ -60,8 +61,18 @@ const ALL_FEATURES = ["Projector", "AC", "Whiteboard", "Smart Board", "Sound Sys
 const columnHelper = createColumnHelper<Room>();
 
 export default function RoomsPage() {
-  const [rooms, setRooms] = useState<Room[]>(DEMO_ROOMS);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    api.get("/resources", { params: { type: "classroom" } }).then(res => {
+      setRooms(res.data.map((r: Record<string, unknown>) => ({
+        id: String(r.id), name: r.name, building: r.building, floor: r.floor,
+        capacity: r.capacity, status: r.status || "available",
+        features: Array.isArray(r.features) ? r.features : [],
+      })));
+    }).catch(() => toast.error("Failed to load rooms"));
+  }, []);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -96,44 +107,35 @@ export default function RoomsPage() {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formName || !formBuilding) {
       toast.error("Name and building are required");
       return;
     }
     setSaving(true);
-    setTimeout(() => {
+    try {
+      const payload = { name: formName, building: formBuilding, floor: formFloor, capacity: formCapacity, status: formStatus, features: formFeatures, type: "classroom" };
       if (editingRoom) {
-        setRooms((prev) =>
-          prev.map((r) =>
-            r.id === editingRoom.id
-              ? { ...r, name: formName, building: formBuilding, floor: formFloor, capacity: formCapacity, status: formStatus, features: formFeatures }
-              : r
-          )
-        );
+        const res = await api.put(`/resources/${editingRoom.id}`, payload);
+        setRooms(prev => prev.map(r => r.id === editingRoom.id ? { ...r, ...res.data, id: String(res.data.id), features: Array.isArray(res.data.features) ? res.data.features : [] } : r));
         toast.success(`Room ${formName} updated`);
       } else {
-        const newRoom: Room = {
-          id: `r-${Date.now()}`,
-          name: formName,
-          building: formBuilding,
-          floor: formFloor,
-          capacity: formCapacity,
-          status: formStatus,
-          features: formFeatures,
-        };
-        setRooms((prev) => [...prev, newRoom]);
+        const res = await api.post("/resources", payload);
+        setRooms(prev => [...prev, { ...res.data, id: String(res.data.id), features: Array.isArray(res.data.features) ? res.data.features : [] }]);
         toast.success(`Room ${formName} created`);
       }
-      setSaving(false);
       setModalOpen(false);
-    }, 500);
+    } catch { toast.error("Failed to save room"); }
+    setSaving(false);
   };
 
-  const handleDelete = (id: string) => {
-    setRooms((prev) => prev.filter((r) => r.id !== id));
-    setDeleteConfirm(null);
-    toast.success("Room deleted");
+  const handleDelete = async (id: string) => {
+    try {
+      await api.delete(`/resources/${id}`);
+      setRooms(prev => prev.filter(r => r.id !== id));
+      setDeleteConfirm(null);
+      toast.success("Room deleted");
+    } catch { toast.error("Failed to delete room"); }
   };
 
   const toggleMaintenance = (room: Room) => {

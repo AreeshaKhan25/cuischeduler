@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createColumnHelper } from "@tanstack/react-table";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -9,6 +9,7 @@ import { DataTable } from "@/components/shared/DataTable";
 import { OS_CONCEPTS } from "@/constants/osConcepts";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import api from "@/lib/api";
 import {
   Plus,
   X,
@@ -67,7 +68,19 @@ const DESIGNATIONS = [
 const columnHelper = createColumnHelper<Faculty>();
 
 export default function FacultyPage() {
-  const [faculty, setFaculty] = useState<Faculty[]>(DEMO_FACULTY);
+  const [faculty, setFaculty] = useState<Faculty[]>([]);
+
+  useEffect(() => {
+    api.get("/resources", { params: { type: "faculty" } }).then(res => {
+      setFaculty(res.data.map((r: Record<string, unknown>) => ({
+        id: String(r.id), name: r.name, department: r.department || "Computer Science",
+        designation: "Faculty", specialization: "",
+        email: `${String(r.name).toLowerCase().replace(/\s+/g, ".")}@cuilwah.edu.pk`,
+        officeHours: "9:00 AM - 5:00 PM",
+        status: r.status === "maintenance" ? "on_leave" : "active",
+      })));
+    }).catch(() => toast.error("Failed to load faculty"));
+  }, []);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFaculty, setEditingFaculty] = useState<Faculty | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
