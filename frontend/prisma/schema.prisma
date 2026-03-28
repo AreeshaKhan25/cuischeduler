@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  name            String
+  hashedPassword  String    @map("hashed_password")
+  role            String    @default("student") // admin, faculty, student
+  department      String    @default("Computer Science")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  bookingsRequested Booking[] @relation("requester")
+  bookingsFaculty   Booking[] @relation("faculty")
+
+  @@map("users")
+}
+
+model Resource {
+  id         Int     @id @default(autoincrement())
+  name       String
+  type       String  @default("classroom") // classroom, lab, faculty, exam_slot
+  building   String  @default("Main Building")
+  floor      Int     @default(1)
+  capacity   Int     @default(40)
+  status     String  @default("available") // available, occupied, maintenance
+  features   String  @default("{}") // JSON stored as text
+  department String  @default("Computer Science")
+
+  bookings         Booking[]
+  timetableEntries TimetableEntry[]
+
+  @@map("resources")
+}
+
+model Booking {
+  id              Int      @id @default(autoincrement())
+  processId       String   @unique @map("process_id")
+  title           String
+  courseCode       String?  @map("course_code")
+  department      String   @default("Computer Science")
+  facultyId       Int?     @map("faculty_id")
+  resourceId      Int?     @map("resource_id")
+  resourceType    String   @default("classroom") @map("resource_type")
+  requestedBy     Int?     @map("requested_by")
+  date            String   // YYYY-MM-DD
+  startTime       String?  @map("start_time") // HH:MM
+  endTime         String?  @map("end_time")   // HH:MM
+  durationMinutes Int      @default(60) @map("duration_minutes")
+  priority        Int      @default(5)
+  state           String   @default("new") // new, ready, running, waiting, completed, blocked
+  arrivalTime     Float    @default(0) @map("arrival_time")
+  waitingTime     Float    @default(0) @map("waiting_time")
+  turnaroundTime  Float    @default(0) @map("turnaround_time")
+  algorithmUsed   String?  @map("algorithm_used")
+  osConceptNote   String?  @map("os_concept_note")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  faculty   User?     @relation("faculty", fields: [facultyId], references: [id])
+  requester User?     @relation("requester", fields: [requestedBy], references: [id])
+  resource  Resource? @relation(fields: [resourceId], references: [id])
+
+  timetableEntry TimetableEntry?
+
+  @@map("bookings")
+}
+
+model TimetableEntry {
+  id            Int      @id @default(autoincrement())
+  bookingId     Int?     @unique @map("booking_id")
+  resourceId    Int?     @map("resource_id")
+  dayOfWeek     String   @map("day_of_week") // Monday-Friday
+  startTime     String   @map("start_time")  // HH:MM
+  endTime       String   @map("end_time")    // HH:MM
+  weekStartDate String?  @map("week_start_date") // YYYY-MM-DD
+
+  booking  Booking?  @relation(fields: [bookingId], references: [id])
+  resource Resource? @relation(fields: [resourceId], references: [id])
+
+  @@map("timetable_entries")
+}
+
+model Notification {
+  id             Int      @id @default(autoincrement())
+  fromDepartment String   @map("from_department")
+  toDepartment   String   @map("to_department")
+  type           String   @default("info") // request, alert, info, response
+  subject        String
+  body           String
+  read           Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+  osConcept      String?  @map("os_concept")
+
+  @@map("notifications")
+}
