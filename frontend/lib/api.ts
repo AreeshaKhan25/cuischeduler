@@ -52,9 +52,9 @@ export const resourcesApi = {
   update: (id: number, data: Record<string, unknown>) =>
     api.put(`/resources/${id}`, data),
   delete: (id: number) => api.delete(`/resources/${id}`),
-  getAvailability: (id: number, params?: Record<string, unknown>) =>
-    api.get(`/resources/${id}/availability`, { params }),
-  getPoolState: () => api.get("/resources/pool/state"),
+  getAvailability: (params?: Record<string, unknown>) =>
+    api.get("/resources/availability", { params }),
+  getPoolState: () => api.get("/resources/pool-state"),
 };
 
 // ─── Bookings ──────────────────────────────────────────────────
@@ -133,7 +133,7 @@ export const notificationsApi = {
   create: (data: Record<string, unknown>) => api.post("/notifications", data),
   markRead: (id: number) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.patch("/notifications/read-all"),
-  getQueueState: () => api.get("/notifications/queue/state"),
+  getQueueState: () => api.get("/notifications/queue-state"),
 };
 
 export default api;
