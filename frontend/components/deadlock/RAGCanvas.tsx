@@ -1,13 +1,21 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState } from "react";
-import * as d3 from "d3";
-import { motion, AnimatePresence } from "framer-motion";
+import { useCallback, useMemo } from "react";
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  MiniMap,
+  ConnectionMode,
+  MarkerType,
+} from "reactflow";
+import "reactflow/dist/style.css";
 import { RAGNode, RAGEdge } from "@/types";
 import { OSConceptBadge } from "@/components/ui/OSConceptBadge";
 import { OS_CONCEPTS } from "@/constants/osConcepts";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface RAGCanvasProps {
   nodes: RAGNode[];
@@ -18,429 +26,123 @@ interface RAGCanvasProps {
 }
 
 export function RAGCanvas({ nodes, edges, hasDeadlock, onNodeDrag, className }: RAGCanvasProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
+  const flowNodes: Node[] = useMemo(() =>
+    nodes.map((n, i) => ({
+      id: n.id,
+      position: { x: n.x ?? (n.type === "process" ? 100 + i * 180 : 100 + i * 180), y: n.y ?? (n.type === "process" ? 80 : 280) },
+      data: { label: n.label || n.id },
+      type: "default",
+      style: {
+        background: n.in_cycle
+          ? "rgba(239, 68, 68, 0.15)"
+          : n.type === "process"
+          ? "rgba(79, 142, 247, 0.12)"
+          : "rgba(45, 212, 191, 0.12)",
+        border: n.in_cycle
+          ? "2px solid #ef4444"
+          : n.type === "process"
+          ? "2px solid rgba(79, 142, 247, 0.5)"
+          : "2px solid rgba(45, 212, 191, 0.5)",
+        borderRadius: n.type === "process" ? "50%" : "8px",
+        color: n.in_cycle ? "#fca5a5" : n.type === "process" ? "#93c5fd" : "#5eead4",
+        fontSize: "12px",
+        fontFamily: "'JetBrains Mono', monospace",
+        fontWeight: 600,
+        width: n.type === "process" ? 70 : 100,
+        height: n.type === "process" ? 70 : 44,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: n.in_cycle ? "0 0 20px rgba(239, 68, 68, 0.4)" : "0 0 8px rgba(0,0,0,0.3)",
+        animation: n.in_cycle ? "pulse 1.5s ease-in-out infinite" : undefined,
+      },
+    })),
+    [nodes]
+  );
 
-  // Measure container
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const obs = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      setDimensions({
-        width: Math.max(600, width),
-        height: Math.max(400, height),
-      });
-    });
-    obs.observe(container);
-    return () => obs.disconnect();
-  }, []);
+  const flowEdges: Edge[] = useMemo(() =>
+    edges.map((e, i) => ({
+      id: e.id || `e${i}`,
+      source: e.source,
+      target: e.target,
+      label: e.type === "assignment" ? "holds" : "requests",
+      labelStyle: { fontSize: 10, fill: e.in_cycle ? "#fca5a5" : "#8892aa", fontFamily: "'JetBrains Mono', monospace" },
+      labelBgStyle: { fill: "rgba(12, 15, 24, 0.8)" },
+      animated: e.in_cycle,
+      style: {
+        stroke: e.in_cycle ? "#ef4444" : e.type === "assignment" ? "#2dd4bf" : "#4f8ef7",
+        strokeWidth: e.in_cycle ? 3 : 2,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: e.in_cycle ? "#ef4444" : e.type === "assignment" ? "#2dd4bf" : "#4f8ef7",
+        width: 16,
+        height: 16,
+      },
+    })),
+    [edges]
+  );
 
-  const renderGraph = useCallback(() => {
-    const svg = d3.select(svgRef.current);
-    if (!svgRef.current || nodes.length === 0) {
-      svg.selectAll("*").remove();
-      return;
-    }
-
-    svg.selectAll("*").remove();
-
-    const { width, height } = dimensions;
-
-    // Defs for gradients, markers, filters
-    const defs = svg.append("defs");
-
-    // Process gradient (blue)
-    const procGrad = defs.append("linearGradient").attr("id", "procGradient").attr("x1", "0%").attr("y1", "0%").attr("x2", "0%").attr("y2", "100%");
-    procGrad.append("stop").attr("offset", "0%").attr("stop-color", "#4f8ef7");
-    procGrad.append("stop").attr("offset", "100%").attr("stop-color", "#2563eb");
-
-    // Process gradient (red for cycle)
-    const procRedGrad = defs.append("linearGradient").attr("id", "procRedGradient").attr("x1", "0%").attr("y1", "0%").attr("x2", "0%").attr("y2", "100%");
-    procRedGrad.append("stop").attr("offset", "0%").attr("stop-color", "#ef4444");
-    procRedGrad.append("stop").attr("offset", "100%").attr("stop-color", "#dc2626");
-
-    // Resource gradient (teal)
-    const resGrad = defs.append("linearGradient").attr("id", "resGradient").attr("x1", "0%").attr("y1", "0%").attr("x2", "0%").attr("y2", "100%");
-    resGrad.append("stop").attr("offset", "0%").attr("stop-color", "#2dd4bf");
-    resGrad.append("stop").attr("offset", "100%").attr("stop-color", "#14b8a6");
-
-    // Resource gradient (red for cycle)
-    const resRedGrad = defs.append("linearGradient").attr("id", "resRedGradient").attr("x1", "0%").attr("y1", "0%").attr("x2", "0%").attr("y2", "100%");
-    resRedGrad.append("stop").attr("offset", "0%").attr("stop-color", "#f87171");
-    resRedGrad.append("stop").attr("offset", "100%").attr("stop-color", "#ef4444");
-
-    // Glow filter
-    const glowFilter = defs.append("filter").attr("id", "glow").attr("x", "-50%").attr("y", "-50%").attr("width", "200%").attr("height", "200%");
-    glowFilter.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
-    const feMerge = glowFilter.append("feMerge");
-    feMerge.append("feMergeNode").attr("in", "coloredBlur");
-    feMerge.append("feMergeNode").attr("in", "SourceGraphic");
-
-    // Red glow filter
-    const redGlowFilter = defs.append("filter").attr("id", "redGlow").attr("x", "-50%").attr("y", "-50%").attr("width", "200%").attr("height", "200%");
-    redGlowFilter.append("feGaussianBlur").attr("stdDeviation", "6").attr("result", "coloredBlur");
-    const redMerge = redGlowFilter.append("feMerge");
-    redMerge.append("feMergeNode").attr("in", "coloredBlur");
-    redMerge.append("feMergeNode").attr("in", "SourceGraphic");
-
-    // Arrow markers
-    defs.append("marker")
-      .attr("id", "arrowTeal")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 38)
-      .attr("refY", 0)
-      .attr("markerWidth", 8)
-      .attr("markerHeight", 8)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "#2dd4bf");
-
-    defs.append("marker")
-      .attr("id", "arrowOrange")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 38)
-      .attr("refY", 0)
-      .attr("markerWidth", 8)
-      .attr("markerHeight", 8)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "#f59e0b");
-
-    defs.append("marker")
-      .attr("id", "arrowRed")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 38)
-      .attr("refY", 0)
-      .attr("markerWidth", 8)
-      .attr("markerHeight", 8)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "#ef4444");
-
-    // Zoom behavior
-    const g = svg.append("g");
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.3, 3])
-      .on("zoom", (event) => {
-        g.attr("transform", event.transform);
-      });
-    svg.call(zoom as any);
-
-    // Map nodes by ID
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-
-    // Draw edges
-    const edgeGroup = g.append("g").attr("class", "edges");
-    edges.forEach((edge) => {
-      const source = nodeMap.get(edge.source);
-      const target = nodeMap.get(edge.target);
-      if (!source || !target) return;
-
-      const isInCycle = edge.in_cycle && hasDeadlock;
-      const isAssignment = edge.type === "assignment";
-      const dimmed = hasDeadlock && !edge.in_cycle;
-
-      edgeGroup.append("line")
-        .attr("x1", source.x)
-        .attr("y1", source.y)
-        .attr("x2", target.x)
-        .attr("y2", target.y)
-        .attr("stroke", isInCycle ? "#ef4444" : isAssignment ? "#2dd4bf" : "#f59e0b")
-        .attr("stroke-width", isInCycle ? 3 : 2)
-        .attr("stroke-dasharray", isAssignment ? "none" : "8,4")
-        .attr("marker-end", `url(#${isInCycle ? "arrowRed" : isAssignment ? "arrowTeal" : "arrowOrange"})`)
-        .attr("opacity", dimmed ? 0.3 : 1)
-        .attr("filter", isInCycle ? "url(#redGlow)" : "none");
-    });
-
-    // Draw nodes
-    const nodeGroup = g.append("g").attr("class", "nodes");
-
-    const drag = d3.drag<SVGGElement, RAGNode>()
-      .on("drag", function (event, d) {
-        d.x = event.x;
-        d.y = event.y;
-        d3.select(this).attr("transform", `translate(${event.x},${event.y})`);
-
-        // Update connected edges
-        edgeGroup.selectAll("line").each(function () {
-          const line = d3.select(this);
-          edges.forEach((edge) => {
-            const src = nodeMap.get(edge.source);
-            const tgt = nodeMap.get(edge.target);
-            if (!src || !tgt) return;
-            if (edge.source === d.id || edge.target === d.id) {
-              line.filter(function () {
-                const lx1 = parseFloat(d3.select(this).attr("x1"));
-                const ly1 = parseFloat(d3.select(this).attr("y1"));
-                return (
-                  (Math.abs(lx1 - src.x) < 1 && Math.abs(ly1 - src.y) < 1) ||
-                  edge.source === d.id
-                );
-              });
-            }
-          });
-        });
-        // Re-render edges on drag
-        onNodeDrag?.(d.id, event.x, event.y);
-      });
-
-    nodes.forEach((node) => {
-      const isInCycle = node.in_cycle && hasDeadlock;
-      const dimmed = hasDeadlock && !node.in_cycle;
-
-      const nodeG = nodeGroup.append("g")
-        .datum(node)
-        .attr("transform", `translate(${node.x},${node.y})`)
-        .attr("cursor", "grab")
-        .attr("opacity", dimmed ? 0.3 : 1)
-        .call(drag as unknown as (selection: d3.Selection<SVGGElement, RAGNode, null, undefined>) => void);
-
-      if (node.type === "process") {
-        // Process: circle
-        nodeG.append("circle")
-          .attr("r", 30)
-          .attr("fill", isInCycle ? "url(#procRedGradient)" : "url(#procGradient)")
-          .attr("stroke", isInCycle ? "#ef4444" : "#4f8ef7")
-          .attr("stroke-width", 2)
-          .attr("filter", isInCycle ? "url(#redGlow)" : "url(#glow)");
-
-        // Pulsing ring for cycle nodes
-        if (isInCycle) {
-          nodeG.append("circle")
-            .attr("r", 34)
-            .attr("fill", "none")
-            .attr("stroke", "#ef4444")
-            .attr("stroke-width", 2)
-            .attr("opacity", 0.6)
-            .append("animate")
-            .attr("attributeName", "r")
-            .attr("values", "34;40;34")
-            .attr("dur", "1.5s")
-            .attr("repeatCount", "indefinite");
-
-          nodeG.select("circle:last-of-type")
-            .append("animate")
-            .attr("attributeName", "opacity")
-            .attr("values", "0.6;0;0.6")
-            .attr("dur", "1.5s")
-            .attr("repeatCount", "indefinite");
-        }
-
-        nodeG.append("text")
-          .attr("text-anchor", "middle")
-          .attr("dy", "0.35em")
-          .attr("fill", "#ffffff")
-          .attr("font-family", "'JetBrains Mono', monospace")
-          .attr("font-size", "14px")
-          .attr("font-weight", "bold")
-          .text(node.label);
-      } else {
-        // Resource: rounded rectangle
-        const rectW = 80;
-        const rectH = 40;
-        nodeG.append("rect")
-          .attr("x", -rectW / 2)
-          .attr("y", -rectH / 2)
-          .attr("width", rectW)
-          .attr("height", rectH)
-          .attr("rx", 8)
-          .attr("ry", 8)
-          .attr("fill", isInCycle ? "url(#resRedGradient)" : "url(#resGradient)")
-          .attr("stroke", isInCycle ? "#ef4444" : "#14b8a6")
-          .attr("stroke-width", 2)
-          .attr("filter", isInCycle ? "url(#redGlow)" : "url(#glow)");
-
-        if (isInCycle) {
-          nodeG.append("rect")
-            .attr("x", -rectW / 2 - 3)
-            .attr("y", -rectH / 2 - 3)
-            .attr("width", rectW + 6)
-            .attr("height", rectH + 6)
-            .attr("rx", 10)
-            .attr("ry", 10)
-            .attr("fill", "none")
-            .attr("stroke", "#ef4444")
-            .attr("stroke-width", 2)
-            .attr("opacity", 0.5)
-            .append("animate")
-            .attr("attributeName", "opacity")
-            .attr("values", "0.5;0;0.5")
-            .attr("dur", "1.5s")
-            .attr("repeatCount", "indefinite");
-        }
-
-        // Instance dots
-        if (node.instances && node.instances > 1) {
-          for (let i = 0; i < node.instances; i++) {
-            const dotX = -((node.instances - 1) * 8) / 2 + i * 8;
-            nodeG.append("circle")
-              .attr("cx", dotX)
-              .attr("cy", rectH / 2 - 10)
-              .attr("r", 3)
-              .attr("fill", "#0f1117");
-          }
-        }
-
-        nodeG.append("text")
-          .attr("text-anchor", "middle")
-          .attr("dy", node.instances && node.instances > 1 ? "-0.1em" : "0.35em")
-          .attr("fill", "#0f1117")
-          .attr("font-family", "'JetBrains Mono', monospace")
-          .attr("font-size", "11px")
-          .attr("font-weight", "bold")
-          .text(node.label);
-      }
-    });
-
-    // Fit to view
-    const bounds = g.node()?.getBBox();
-    if (bounds) {
-      const pad = 60;
-      const scale = Math.min(
-        (width - pad * 2) / (bounds.width || 1),
-        (height - pad * 2) / (bounds.height || 1),
-        1.5
-      );
-      const tx = width / 2 - (bounds.x + bounds.width / 2) * scale;
-      const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
-      svg.call(zoom.transform as any, d3.zoomIdentity.translate(tx, ty).scale(scale));
-    }
-  }, [nodes, edges, hasDeadlock, dimensions, onNodeDrag]);
-
-  useEffect(() => {
-    renderGraph();
-    return () => {
-      if (svgRef.current) {
-        d3.select(svgRef.current).selectAll("*").remove();
-      }
-    };
-  }, [renderGraph]);
-
-  const handleZoomIn = () => {
-    if (!svgRef.current) return;
-    const svg = d3.select(svgRef.current);
-    const zoom = d3.zoom<SVGSVGElement, unknown>();
-    svg.transition().duration(300).call(zoom.scaleBy, 1.3);
-  };
-
-  const handleZoomOut = () => {
-    if (!svgRef.current) return;
-    const svg = d3.select(svgRef.current);
-    const zoom = d3.zoom<SVGSVGElement, unknown>();
-    svg.transition().duration(300).call(zoom.scaleBy, 0.7);
-  };
-
-  const handleFitView = () => {
-    renderGraph();
-  };
+  const onNodeDragStop = useCallback(
+    (_: unknown, node: Node) => {
+      onNodeDrag?.(node.id, node.position.x, node.position.y);
+    },
+    [onNodeDrag]
+  );
 
   return (
-    <div className={cn("relative rounded-xl border border-border bg-bg-secondary overflow-hidden", className)} ref={containerRef}>
-      {/* OS Concept Badge */}
-      <OSConceptBadge
-        concept={OS_CONCEPTS.DEADLOCK_RAG.name}
-        chapter={OS_CONCEPTS.DEADLOCK_RAG.chapter}
-        description={OS_CONCEPTS.DEADLOCK_RAG.description}
-        size="sm"
-        position="corner"
-        pulse={false}
-      />
-
-      {/* Title */}
-      <div className="absolute top-3 left-3 z-10">
-        <h3 className="text-[13px] font-semibold text-text-primary font-mono">Resource Allocation Graph</h3>
-      </div>
-
-      {/* Zoom Controls */}
-      <div className="absolute bottom-3 left-3 z-10 flex gap-1.5">
-        <button onClick={handleZoomIn} className="w-8 h-8 rounded-lg bg-bg-tertiary border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:border-border-light transition-all">
-          <ZoomIn size={14} />
-        </button>
-        <button onClick={handleZoomOut} className="w-8 h-8 rounded-lg bg-bg-tertiary border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:border-border-light transition-all">
-          <ZoomOut size={14} />
-        </button>
-        <button onClick={handleFitView} className="w-8 h-8 rounded-lg bg-bg-tertiary border border-border flex items-center justify-center text-text-secondary hover:text-text-primary hover:border-border-light transition-all">
-          <Maximize2 size={14} />
-        </button>
+    <div className={cn("relative rounded-xl border border-border bg-bg-primary overflow-hidden", className)} style={{ height: 420 }}>
+      {/* Header */}
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+        <OSConceptBadge concept="Resource Allocation Graph" chapter="Ch.7" size="sm" />
+        {hasDeadlock && (
+          <span className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-danger/20 border border-danger/40 text-danger text-[11px] font-mono font-bold animate-pulse">
+            <AlertTriangle size={12} />
+            DEADLOCK DETECTED
+          </span>
+        )}
       </div>
 
       {/* Legend */}
-      <div className="absolute bottom-3 right-3 z-10 flex flex-col gap-1.5 bg-bg-primary/80 backdrop-blur-sm rounded-lg border border-border p-2.5">
-        <span className="text-[10px] font-mono text-text-tertiary uppercase tracking-wider mb-0.5">Legend</span>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-b from-[#4f8ef7] to-[#2563eb]" />
-          <span className="text-[10px] text-text-secondary">Process</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-3 rounded bg-gradient-to-b from-[#2dd4bf] to-[#14b8a6]" />
-          <span className="text-[10px] text-text-secondary">Resource</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-0 border-t-2 border-[#2dd4bf]" />
-          <span className="text-[10px] text-text-secondary">Assignment (R-&gt;P)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-0 border-t-2 border-dashed border-[#f59e0b]" />
-          <span className="text-[10px] text-text-secondary">Request (P-&gt;R)</span>
-        </div>
-        {hasDeadlock && (
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-0 border-t-[3px] border-[#ef4444]" />
-            <span className="text-[10px] text-danger font-medium">Cycle (Deadlock)</span>
-          </div>
-        )}
+      <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 text-[10px] font-mono">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-blue-400/50 bg-blue-400/10" /> Process</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-2 border-teal-400/50 bg-teal-400/10" /> Resource</span>
+        <span className="flex items-center gap-1"><span className="w-5 h-0.5 bg-teal-400" /> Holds</span>
+        <span className="flex items-center gap-1"><span className="w-5 h-0.5 bg-blue-400" /> Requests</span>
+        {hasDeadlock && <span className="flex items-center gap-1"><span className="w-5 h-0.5 bg-red-500" /> Cycle</span>}
       </div>
 
-      {/* Deadlock Alert Banner */}
-      <AnimatePresence>
-        {hasDeadlock && (
-          <motion.div
-            initial={{ y: -40, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -40, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="absolute top-12 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 rounded-lg bg-danger/20 border border-danger/50 backdrop-blur-sm"
-          >
-            <AlertTriangle size={16} className="text-danger animate-pulse" />
-            <span className="text-[13px] font-mono font-semibold text-danger">
-              DEADLOCK DETECTED - Circular Wait in RAG
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Empty State */}
-      {nodes.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 mx-auto rounded-full bg-bg-tertiary border border-border flex items-center justify-center">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-text-tertiary">
-                <circle cx="8" cy="8" r="4" />
-                <circle cx="16" cy="16" r="4" />
-                <path d="M12 8h4v4" strokeDasharray="4 2" />
-                <path d="M12 16H8v-4" strokeDasharray="4 2" />
-              </svg>
-            </div>
-            <p className="text-[13px] text-text-tertiary">No processes or resources loaded</p>
-            <p className="text-[11px] text-text-tertiary">Create a scenario to visualize the RAG</p>
+      {nodes.length > 0 ? (
+        <ReactFlow
+          nodes={flowNodes}
+          edges={flowEdges}
+          onNodeDragStop={onNodeDragStop}
+          connectionMode={ConnectionMode.Loose}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          minZoom={0.3}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="#1a2035" gap={20} size={1} />
+          <Controls
+            style={{ button: { background: "#1a2035", color: "#8892aa", border: "1px solid #2a3347" } } as unknown as React.CSSProperties}
+            showInteractive={false}
+          />
+          <MiniMap
+            nodeColor={(n) => (n.style?.border as string)?.includes("ef4444") ? "#ef4444" : (n.style?.border as string)?.includes("2dd4bf") ? "#2dd4bf" : "#4f8ef7"}
+            maskColor="rgba(12, 15, 24, 0.8)"
+            style={{ background: "#0d1117", border: "1px solid #2a3347" }}
+          />
+        </ReactFlow>
+      ) : (
+        <div className="flex items-center justify-center h-full text-text-tertiary text-sm">
+          <div className="text-center">
+            <p>No RAG data available</p>
+            <p className="text-[11px] mt-1">Create a scenario or click "Detect Now" to build the graph</p>
           </div>
         </div>
       )}
-
-      {/* SVG Canvas */}
-      <svg
-        ref={svgRef}
-        width={dimensions.width}
-        height={dimensions.height}
-        className="w-full h-full"
-        style={{ minHeight: 400, background: "transparent" }}
-      />
     </div>
   );
 }
