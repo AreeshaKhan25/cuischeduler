@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cuischeduler-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python seed/seed_data.py
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///./cuischeduler.db
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.12.0"
