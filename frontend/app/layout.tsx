@@ -43,6 +43,9 @@ export default function RootLayout({
 
   const user = mounted ? getUser() : null;
 
+  // Don't render anything until client is mounted to avoid hydration errors
+  const showApp = mounted && !isAuthPage;
+
   return (
     <html lang="en" className="dark">
       <head>
@@ -63,7 +66,12 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-bg-primary text-text-primary font-sans antialiased">
-        {isAuthPage ? (
+        {!mounted ? (
+          // Loading state while client mounts
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="animate-pulse text-text-tertiary text-sm font-mono">Loading CUIScheduler...</div>
+          </div>
+        ) : isAuthPage ? (
           // Auth pages: no sidebar, no topbar — full screen
           <>
             {children}
