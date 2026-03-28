@@ -110,18 +110,15 @@ export async function POST() {
   ];
 
   const algos = ["fcfs", "sjf", "round_robin", "priority"];
-  for (let i = 0; i < bookingData.length; i++) {
-    const bd = bookingData[i];
-    await prisma.booking.create({
-      data: {
-        processId: `P${i + 1}`, title: bd.title, courseCode: bd.cc, department: "Computer Science",
-        facultyId: 2, resourceId: rid(bd.room), resourceType: bd.room.startsWith("Lab") ? "lab" : "classroom",
-        requestedBy: 1, date: bd.date, startTime: bd.st, endTime: bd.et, durationMinutes: bd.dur,
-        priority: bd.pri, state: bd.state, arrivalTime: i * 5, algorithmUsed: algos[i % 4],
-        osConceptNote: `Process P${i + 1}: state=${bd.state}, priority=${bd.pri}.`,
-      },
-    });
-  }
+  await prisma.booking.createMany({
+    data: bookingData.map((bd, i) => ({
+      processId: `P${i + 1}`, title: bd.title, courseCode: bd.cc, department: "Computer Science",
+      facultyId: 2, resourceId: rid(bd.room), resourceType: bd.room.startsWith("Lab") ? "lab" : "classroom",
+      requestedBy: 1, date: bd.date, startTime: bd.st, endTime: bd.et, durationMinutes: bd.dur,
+      priority: bd.pri, state: bd.state, arrivalTime: i * 5, algorithmUsed: algos[i % 4],
+      osConceptNote: `Process P${i + 1}: state=${bd.state}, priority=${bd.pri}.`,
+    })),
+  });
 
   // ── Notifications ──────────────────────────────────────────────────
   await prisma.notification.createMany({
