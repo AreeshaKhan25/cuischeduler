@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/__pycache__/
+**/__pycache__/
+*.pyc
+
+# Environment
+.env
+backend/.env
+frontend/.env.local
+
+# Database
+*.db
+*.sqlite3
+
+# Build
+frontend/.next/
+frontend/out/
+backend/alembic/versions/*.py
+!backend/alembic/versions/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+postgres_data/
+
+# Claude
+.claude/

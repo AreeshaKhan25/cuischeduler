@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+
+:root {
+  --bg-primary: #0f1117;
+  --bg-secondary: #161b27;
+  --bg-tertiary: #1e2435;
+  --bg-hover: #252d42;
+  --border: #2a3347;
+  --border-light: #3a4560;
+  --text-primary: #f0f4ff;
+  --text-secondary: #8892aa;
+  --text-tertiary: #5a6480;
+  --accent-blue: #4f8ef7;
+  --accent-blue-soft: #1a2f5e;
+  --accent-teal: #2dd4bf;
+  --accent-teal-soft: #0d2e2a;
+  --success: #22c55e;
+  --success-soft: #0a2e17;
+  --warning: #f59e0b;
+  --warning-soft: #2d1f05;
+  --danger: #ef4444;
+  --danger-soft: #2d0a0a;
+  --os-bg: #7c1d1d;
+  --os-border: #ef4444;
+  --os-text: #fca5a5;
+  --os-glow: rgba(239, 68, 68, 0.25);
+}
+
+@keyframes osPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px var(--os-glow);
+  }
+  50% {
+    box-shadow: 0 0 20px var(--os-glow);
+  }
+}
+
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 4px;
+  border: 2px solid var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) var(--bg-primary);
+}
+
+/* Selection styling */
+::selection {
+  background: var(--accent-blue-soft);
+  color: var(--accent-blue);
+}
+
+/* Focus visible outline */
+:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Playfair Display', serif;
+  }
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
