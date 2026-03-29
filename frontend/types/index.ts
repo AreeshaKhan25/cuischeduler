@@ -79,6 +79,7 @@ export interface RAGEdge {
   source: string;
   target: string;
   type: 'assignment' | 'request';
+  label?: string;
   in_cycle: boolean;
 }
 
