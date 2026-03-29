@@ -205,12 +205,22 @@ export const useDeadlock = create<DeadlockState>((set, get) => ({
     try {
       const res = await deadlockApi.getRAG();
       const data = res.data?.data || res.data;
+      const rawNodes: RAGNode[] = (data.nodes || []).map((n: Partial<RAGNode>, i: number) => ({
+        ...n,
+        x: n.x ?? (n.type === "process" ? 120 + (i % 4) * 180 : 120 + (i % 4) * 180),
+        y: n.y ?? (n.type === "process" ? 60 + Math.floor(i / 4) * 150 : 250 + Math.floor(i / 4) * 150),
+      }));
+      const rawEdges: RAGEdge[] = (data.edges || []).map((e: Partial<RAGEdge>, i: number) => ({
+        ...e,
+        id: e.id || `e${i}`,
+        type: e.label === "assigned_to" ? "assignment" : "request",
+      }));
       set({
-        ragNodes: data.nodes || [],
-        ragEdges: data.edges || [],
+        ragNodes: rawNodes,
+        ragEdges: rawEdges,
+        hasDeadlock: data.has_deadlock || false,
       });
     } catch {
-      // Use demo data if API is unavailable
       const demo = generateClassicDeadlock();
       set({ ragNodes: demo.nodes, ragEdges: demo.edges });
     }
@@ -221,37 +231,44 @@ export const useDeadlock = create<DeadlockState>((set, get) => ({
     try {
       const res = await deadlockApi.analyze();
       const data = res.data?.data || res.data;
+
+      // Build nodes/edges from RAG in response if present
+      const ragData = data.rag || data;
+      const rawNodes: RAGNode[] = (ragData.nodes || []).map((n: Partial<RAGNode>, i: number) => ({
+        ...n,
+        x: n.x ?? (n.type === "process" ? 120 + (i % 4) * 180 : 120 + (i % 4) * 180),
+        y: n.y ?? (n.type === "process" ? 60 + Math.floor(i / 4) * 150 : 250 + Math.floor(i / 4) * 150),
+        id: n.id || `N${i}`,
+        type: n.type || "process",
+        label: n.label || n.id || `N${i}`,
+        in_cycle: n.in_cycle || false,
+      }));
+      const rawEdges: RAGEdge[] = (ragData.edges || []).map((e: Partial<RAGEdge>, i: number) => ({
+        ...e,
+        id: e.id || `e${i}`,
+        type: e.label === "assigned_to" ? "assignment" : "request",
+        in_cycle: e.in_cycle || false,
+      }));
+
+      // Mark cycle nodes from deadlocked_processes
+      const cycleSet = new Set([...(data.deadlocked_processes || []), ...(data.deadlocked_resources || [])]);
+      if (cycleSet.size > 0) {
+        rawNodes.forEach(n => { if (cycleSet.has(n.id)) n.in_cycle = true; });
+        rawEdges.forEach(e => { if (cycleSet.has(e.source) && cycleSet.has(e.target)) e.in_cycle = true; });
+      }
+
       set({
+        ragNodes: rawNodes,
+        ragEdges: rawEdges,
         analysis: data,
-        hasDeadlock: data.has_deadlock,
+        hasDeadlock: data.has_deadlock || false,
         isAnalyzing: false,
       });
-      // Update node cycle flags
-      if (data.cycle_nodes?.length) {
-        const { ragNodes, ragEdges } = get();
-        set({
-          ragNodes: ragNodes.map((n) => ({
-            ...n,
-            in_cycle: data.cycle_nodes.includes(n.id),
-          })),
-          ragEdges: ragEdges.map((e) => ({
-            ...e,
-            in_cycle:
-              data.cycle_nodes.includes(e.source) &&
-              data.cycle_nodes.includes(e.target),
-          })),
-        });
-      }
     } catch {
-      // Local analysis
-      const { ragNodes, ragEdges } = get();
+      const { ragNodes } = get();
       const hasCycle = ragNodes.some((n) => n.in_cycle);
       const analysis = generateDeadlockAnalysis(hasCycle, ragNodes);
-      set({
-        analysis,
-        hasDeadlock: analysis.has_deadlock,
-        isAnalyzing: false,
-      });
+      set({ analysis, hasDeadlock: analysis.has_deadlock, isAnalyzing: false });
     }
   },
 
@@ -280,13 +297,30 @@ export const useDeadlock = create<DeadlockState>((set, get) => ({
   createScenario: async (type: string) => {
     set({ isAnalyzing: true, selectedScenario: type });
     try {
-      const res = await deadlockApi.createScenario({ type });
-      const data = res.data?.data || res.data;
+      await deadlockApi.createScenario({ scenario_type: type });
+      // After creating scenario, fetch fresh RAG
+      const ragRes = await deadlockApi.getRAG();
+      const ragData = ragRes.data?.data || ragRes.data;
+      const rawNodes: RAGNode[] = (ragData.nodes || []).map((n: Partial<RAGNode>, i: number) => ({
+        ...n,
+        x: n.x ?? (n.type === "process" ? 120 + (i % 4) * 180 : 120 + (i % 4) * 180),
+        y: n.y ?? (n.type === "process" ? 60 + Math.floor(i / 4) * 150 : 250 + Math.floor(i / 4) * 150),
+        id: n.id || `N${i}`,
+        type: n.type || "process",
+        label: n.label || n.id || `N${i}`,
+        in_cycle: n.in_cycle || false,
+      }));
+      const rawEdges: RAGEdge[] = (ragData.edges || []).map((e: Partial<RAGEdge>, i: number) => ({
+        ...e,
+        id: e.id || `e${i}`,
+        type: e.label === "assigned_to" ? "assignment" : "request",
+        in_cycle: e.in_cycle || false,
+      }));
       set({
-        ragNodes: data.nodes || [],
-        ragEdges: data.edges || [],
+        ragNodes: rawNodes,
+        ragEdges: rawEdges,
         analysis: null,
-        hasDeadlock: false,
+        hasDeadlock: ragData.has_deadlock || false,
         isAnalyzing: false,
       });
     } catch {
@@ -318,26 +352,28 @@ export const useDeadlock = create<DeadlockState>((set, get) => ({
   resolveDeadlock: async (strategy: string) => {
     set({ isAnalyzing: true });
     try {
-      const res = await deadlockApi.resolve({ strategy });
-      const data = res.data?.data || res.data;
+      await deadlockApi.resolve({ strategy });
+      // Fetch fresh RAG after resolution
+      const ragRes = await deadlockApi.getRAG();
+      const ragData = ragRes.data?.data || ragRes.data;
+      const rawNodes: RAGNode[] = (ragData.nodes || []).map((n: Partial<RAGNode>, i: number) => ({
+        ...n,
+        x: n.x ?? (n.type === "process" ? 120 + (i % 4) * 180 : 120 + (i % 4) * 180),
+        y: n.y ?? (n.type === "process" ? 60 + Math.floor(i / 4) * 150 : 250 + Math.floor(i / 4) * 150),
+      }));
+      const rawEdges: RAGEdge[] = (ragData.edges || []).map((e: Partial<RAGEdge>, i: number) => ({
+        ...e,
+        id: e.id || `e${i}`,
+        type: e.label === "assigned_to" ? "assignment" : "request",
+      }));
       set({
-        ragNodes: data.nodes || [],
-        ragEdges: data.edges || [],
-        analysis: null,
-        hasDeadlock: false,
-        isAnalyzing: false,
+        ragNodes: rawNodes, ragEdges: rawEdges,
+        analysis: null, hasDeadlock: ragData.has_deadlock || false, isAnalyzing: false,
       });
     } catch {
-      // Local resolution
       const resolved = generateResolvedState();
       const safeAnalysis = generateDeadlockAnalysis(false, resolved.nodes);
-      set({
-        ragNodes: resolved.nodes,
-        ragEdges: resolved.edges,
-        analysis: safeAnalysis,
-        hasDeadlock: false,
-        isAnalyzing: false,
-      });
+      set({ ragNodes: resolved.nodes, ragEdges: resolved.edges, analysis: safeAnalysis, hasDeadlock: false, isAnalyzing: false });
     }
   },
 
