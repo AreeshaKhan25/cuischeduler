@@ -123,7 +123,13 @@ interface RoomCardProps {
   index: number;
 }
 
+function parseFeatures(features: string | string[]): string[] {
+  if (Array.isArray(features)) return features;
+  try { const parsed = JSON.parse(features); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+}
+
 function RoomCard({ room, isSelected, onSelect, index }: RoomCardProps) {
+  const feats = parseFeatures(room.features);
   return (
     <Tooltip.Provider delayDuration={300}>
       <Tooltip.Root>
@@ -136,8 +142,8 @@ function RoomCard({ room, isSelected, onSelect, index }: RoomCardProps) {
             className={cn(
               "relative w-full text-left p-4 rounded-xl border transition-all duration-200",
               "bg-bg-secondary group cursor-pointer",
-              statusBorderColor[room.status],
-              statusBgGlow[room.status],
+              statusBorderColor[room.status as ResourceStatus],
+              statusBgGlow[room.status as ResourceStatus],
               isSelected && "ring-2 ring-accent-blue ring-offset-2 ring-offset-bg-primary border-accent-blue/60"
             )}
           >
@@ -151,7 +157,7 @@ function RoomCard({ room, isSelected, onSelect, index }: RoomCardProps) {
                   {room.type}
                 </span>
               </div>
-              <ResourceDot status={room.status} pulse={room.status === "available"} size="md" />
+              <ResourceDot status={room.status as ResourceStatus} pulse={room.status === "available"} size="md" />
             </div>
 
             {/* Capacity */}
@@ -162,7 +168,7 @@ function RoomCard({ room, isSelected, onSelect, index }: RoomCardProps) {
 
             {/* Feature Icons */}
             <div className="flex flex-wrap gap-1.5">
-              {room.features.slice(0, 4).map((feat) => (
+              {feats.slice(0, 4).map((feat) => (
                 <span
                   key={feat}
                   className="flex items-center justify-center w-6 h-6 rounded-md bg-bg-tertiary text-text-tertiary"
@@ -170,9 +176,9 @@ function RoomCard({ room, isSelected, onSelect, index }: RoomCardProps) {
                   {featureIcons[feat] || <Wrench size={12} />}
                 </span>
               ))}
-              {room.features.length > 4 && (
+              {feats.length > 4 && (
                 <span className="flex items-center justify-center w-6 h-6 rounded-md bg-bg-tertiary text-text-tertiary text-[10px] font-mono">
-                  +{room.features.length - 4}
+                  +{feats.length - 4}
                 </span>
               )}
             </div>
@@ -204,7 +210,7 @@ function RoomCard({ room, isSelected, onSelect, index }: RoomCardProps) {
                 {room.building} - Floor {room.floor} - {room.capacity} seats
               </div>
               <div className="text-[11px] text-text-tertiary">
-                Features: {room.features.join(", ")}
+                Features: {parseFeatures(room.features).join(", ") || "None"}
               </div>
               {room.status === "occupied" && (
                 <div className="text-[11px] text-danger font-mono">

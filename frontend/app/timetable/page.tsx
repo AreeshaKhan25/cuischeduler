@@ -1,199 +1,263 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
-import { DndContext, DragEndEvent, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Wand2, Loader2 } from "lucide-react";
-import { format, addWeeks, subWeeks, startOfWeek } from "date-fns";
+import { useEffect, useState, useCallback } from "react";
+import { Loader2, Download, CalendarDays, User, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { OS_CONCEPTS } from "@/constants/osConcepts";
-import { DEPARTMENTS } from "@/constants/cuiData";
-import { useTimetable } from "@/hooks/useTimetable";
-import { useResources } from "@/hooks/useResources";
-import { TimetableGrid } from "@/components/timetable/TimetableGrid";
-import { ResourceSidebar } from "@/components/timetable/ResourceSidebar";
-import { ExportButton } from "@/components/timetable/ExportButton";
+import { timetableApi, sectionsApi, resourcesApi } from "@/lib/api";
+import { SectionTimetableGrid } from "@/components/timetable/SectionTimetableGrid";
+import { TimetableEntry, Section, Resource } from "@/types";
+import { FEATURE_OS_MAP } from "@/constants/cuiData";
+
+type FilterMode = "section" | "faculty" | "room";
 
 export default function TimetablePage() {
-  const {
-    entries,
-    currentWeek,
-    selectedDepartment,
-    conflicts,
-    isLoading,
-    isAutoScheduling,
-    fetchEntries,
-    setWeek,
-    setDepartment,
-    moveEntry,
-    autoSchedule,
-    setDragState,
-  } = useTimetable();
+  const [entries, setEntries] = useState<TimetableEntry[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [semesterInfo, setSemesterInfo] = useState<{ id: number; code: string; name: string } | null>(null);
 
-  const { fetchResources } = useResources();
+  const [filterMode, setFilterMode] = useState<FilterMode>("section");
+  const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
+  const [selectedFacultyId, setSelectedFacultyId] = useState<string>("");
+  const [selectedResourceId, setSelectedResourceId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedEntry, setSelectedEntry] = useState<TimetableEntry | null>(null);
+
+  // Load sections and resources on mount
+  useEffect(() => {
+    Promise.all([
+      sectionsApi.getAll(),
+      resourcesApi.getAll(),
+    ]).then(([secRes, resRes]) => {
+      setSections(secRes.data);
+      setResources(resRes.data);
+      // Auto-select first section
+      if (secRes.data.length > 0) {
+        setSelectedSectionId(secRes.data[0].id);
+      }
+    });
+  }, []);
+
+  // Fetch timetable entries when filter changes
+  const fetchEntries = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const params: Record<string, unknown> = {};
+      if (filterMode === "section" && selectedSectionId) params.section_id = selectedSectionId;
+      if (filterMode === "faculty" && selectedFacultyId) params.faculty_id = selectedFacultyId;
+      if (filterMode === "room" && selectedResourceId) params.resource_id = selectedResourceId;
+
+      const res = await timetableApi.get(params);
+      setEntries(res.data.entries || []);
+      setSemesterInfo(res.data.semester);
+    } catch (err) {
+      console.error("Failed to fetch timetable:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [filterMode, selectedSectionId, selectedFacultyId, selectedResourceId]);
 
   useEffect(() => {
-    fetchEntries();
-    fetchResources();
-  }, [fetchEntries, fetchResources]);
+    if (selectedSectionId || selectedFacultyId || selectedResourceId) {
+      fetchEntries();
+    }
+  }, [fetchEntries, selectedSectionId, selectedFacultyId, selectedResourceId]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    })
-  );
+  const selectedSection = sections.find((s) => s.id === selectedSectionId);
+  const classrooms = resources.filter((r) => r.type === "classroom" || r.type === "lab");
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setDragState({ isDragging: true, activeId: String(event.active.id) });
-  }, [setDragState]);
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    setDragState({ isDragging: false, activeId: null, overId: null });
-
-    const { active, over } = event;
-    if (!over) return;
-
-    const overId = String(over.id);
-    if (!overId.startsWith("cell-")) return;
-
-    const parts = overId.split("-");
-    const dayIdx = parseInt(parts[1]);
-    const hour = parts[2];
-
-    const activeId = String(active.id);
-
-    // If dragged from sidebar, we would create new entry (simplified)
-    if (activeId.startsWith("sidebar-")) return;
-
-    // Move existing entry
-    moveEntry(activeId, dayIdx + 1, `${hour}`);
-  }, [setDragState, moveEntry]);
-
-  const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
+  // Get unique faculty from entries for faculty filter
+  const [allFaculty, setAllFaculty] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => {
+    timetableApi.get({}).then((res) => {
+      const facs = new Map<number, string>();
+      for (const e of res.data.entries || []) {
+        const f = e.courseOffering?.faculty;
+        if (f) facs.set(f.id, f.name);
+      }
+      setAllFaculty(Array.from(facs.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)));
+    });
+  }, []);
 
   return (
-    <div className="space-y-6 max-w-[1400px]">
-      {/* Page Header */}
-      <PageHeader
-        title="Timetable Management"
-        subtitle="Weekly schedule viewed as a Gantt chart. Drag to reschedule — OS process scheduling in action."
-        breadcrumb={["CUIScheduler", "Timetable"]}
-        osConcepts={[
-          OS_CONCEPTS.FCFS,
-          OS_CONCEPTS.PRIORITY,
-          OS_CONCEPTS.PROCESS_STATES,
-        ]}
-      />
-
-      {/* Controls Bar */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        {/* Week Navigation */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setWeek(subWeeks(currentWeek, 1))}
-            className="p-2 rounded-lg hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors border border-border"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <div className="px-4 py-2 rounded-lg bg-bg-secondary border border-border text-[13px] font-medium text-text-primary min-w-[200px] text-center">
-            Week of {format(weekStart, "MMM dd, yyyy")}
-          </div>
-          <button
-            onClick={() => setWeek(addWeeks(currentWeek, 1))}
-            className="p-2 rounded-lg hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors border border-border"
-          >
-            <ChevronRight size={16} />
-          </button>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-display font-bold text-text-primary">Timetable</h1>
+          {semesterInfo && (
+            <p className="text-sm text-text-secondary mt-0.5">
+              {semesterInfo.name} ({semesterInfo.code})
+            </p>
+          )}
         </div>
-
-        {/* Department Filter */}
-        <select
-          value={selectedDepartment}
-          onChange={(e) => setDepartment(e.target.value)}
-          className="px-3 py-2 rounded-lg text-[13px] bg-bg-secondary border border-border text-text-primary focus:outline-none focus:border-accent-blue cursor-pointer"
+        <button
+          className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg hover:bg-bg-hover transition-colors text-text-secondary"
+          onClick={() => window.print()}
         >
-          <option value="all">All Departments</option>
-          {DEPARTMENTS.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
+          <Download size={14} />
+          Export
+        </button>
+      </div>
 
-        {/* Auto-Schedule Buttons */}
-        <div className="flex items-center gap-2">
-          {(["FCFS", "SJF", "PRIORITY", "RR"] as const).map((algo) => (
+      {/* Filter Bar */}
+      <div className="flex flex-wrap items-center gap-3 p-3 bg-bg-secondary border border-border rounded-lg">
+        {/* Filter mode tabs */}
+        <div className="flex rounded-lg border border-border overflow-hidden">
+          {([
+            { mode: "section" as FilterMode, icon: CalendarDays, label: "Section" },
+            { mode: "faculty" as FilterMode, icon: User, label: "Faculty" },
+            { mode: "room" as FilterMode, icon: Building2, label: "Room" },
+          ]).map(({ mode, icon: Icon, label }) => (
             <button
-              key={algo}
-              onClick={() => autoSchedule(algo)}
-              disabled={isAutoScheduling}
+              key={mode}
+              onClick={() => setFilterMode(mode)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-mono font-medium",
-                "border border-border transition-all duration-200",
-                isAutoScheduling
-                  ? "bg-bg-tertiary text-text-tertiary cursor-not-allowed"
-                  : "bg-bg-secondary text-text-secondary hover:text-accent-blue hover:border-accent-blue/30 hover:bg-accent-blue/5"
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
+                filterMode === mode
+                  ? "bg-accent-blue text-white"
+                  : "bg-bg-primary text-text-secondary hover:bg-bg-hover"
               )}
             >
-              {isAutoScheduling ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Wand2 size={12} />
-              )}
-              {algo}
+              <Icon size={13} />
+              {label}
             </button>
           ))}
         </div>
 
-        {/* Export */}
-        <ExportButton entries={entries} />
+        {/* Filter dropdown */}
+        {filterMode === "section" && (
+          <select
+            value={selectedSectionId || ""}
+            onChange={(e) => setSelectedSectionId(parseInt(e.target.value))}
+            className="px-3 py-1.5 text-sm bg-bg-primary border border-border rounded-lg text-text-primary"
+          >
+            <option value="">Select Section</option>
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {filterMode === "faculty" && (
+          <select
+            value={selectedFacultyId}
+            onChange={(e) => setSelectedFacultyId(e.target.value)}
+            className="px-3 py-1.5 text-sm bg-bg-primary border border-border rounded-lg text-text-primary"
+          >
+            <option value="">Select Faculty</option>
+            {allFaculty.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {filterMode === "room" && (
+          <select
+            value={selectedResourceId}
+            onChange={(e) => setSelectedResourceId(e.target.value)}
+            className="px-3 py-1.5 text-sm bg-bg-primary border border-border rounded-lg text-text-primary"
+          >
+            <option value="">Select Room</option>
+            {classrooms.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name} ({r.type})
+              </option>
+            ))}
+          </select>
+        )}
+
+        {/* Section info */}
+        {filterMode === "section" && selectedSection && (
+          <span className="text-xs text-text-tertiary ml-auto">
+            {selectedSection.program} &middot; Sem {selectedSection.semester} &middot; {selectedSection.strength} students
+          </span>
+        )}
       </div>
 
-      {/* Conflict Warning */}
-      {conflicts.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-3 p-3 rounded-lg bg-danger-soft border border-danger/20"
-        >
-          <div className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-          <span className="text-[13px] text-danger font-medium">
-            {conflicts.length} scheduling conflict{conflicts.length !== 1 ? "s" : ""} detected
-          </span>
-          <span className="text-[12px] text-text-secondary">
-            — {conflicts[0].reason}
-          </span>
-        </motion.div>
+      {/* Timetable Grid */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="animate-spin text-accent-blue" size={24} />
+          <span className="ml-2 text-sm text-text-secondary">Loading timetable...</span>
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="text-center py-20 text-text-tertiary">
+          <CalendarDays size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No classes scheduled yet.</p>
+          <p className="text-xs mt-1">Admin can run Auto-Schedule to generate the timetable.</p>
+        </div>
+      ) : (
+        <SectionTimetableGrid
+          entries={entries}
+          onCellClick={(entry) => setSelectedEntry(entry)}
+        />
       )}
 
-      {/* Main Content: Sidebar + Grid */}
-      <DndContext
-        sensors={sensors}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="flex gap-4">
-          {/* Resource Sidebar */}
-          <ResourceSidebar />
-
-          {/* Timetable Grid */}
-          <div className="flex-1 min-w-0">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-[500px] rounded-xl border border-border bg-bg-secondary">
-                <div className="flex items-center gap-3 text-text-secondary">
-                  <Loader2 size={20} className="animate-spin" />
-                  <span className="text-[14px]">Loading timetable...</span>
-                </div>
+      {/* Entry Detail Modal */}
+      {selectedEntry && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setSelectedEntry(null)}
+        >
+          <div
+            className="bg-bg-secondary border border-border rounded-xl p-6 max-w-md w-full mx-4 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-text-primary">
+              {selectedEntry.courseOffering?.course?.code} — {selectedEntry.courseOffering?.course?.name}
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Section</span>
+                <span className="text-text-primary">{selectedEntry.courseOffering?.section?.name}</span>
               </div>
-            ) : (
-              <TimetableGrid
-                entries={entries}
-                conflicts={conflicts}
-                selectedDepartment={selectedDepartment}
-              />
-            )}
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Faculty</span>
+                <span className="text-text-primary">{selectedEntry.courseOffering?.faculty?.name || "TBD"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Room</span>
+                <span className="text-text-primary">{selectedEntry.resource?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Day & Time</span>
+                <span className="text-text-primary">
+                  {selectedEntry.dayOfWeek}, {selectedEntry.startTime} - {selectedEntry.endTime}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-tertiary">Type</span>
+                <span className="text-text-primary">{selectedEntry.isLab ? "Lab" : "Lecture"}</span>
+              </div>
+            </div>
+
+            {/* OS Concept annotation (subtle) */}
+            <div className="mt-3 pt-3 border-t border-border">
+              <p className="text-[10px] font-mono text-text-tertiary">
+                OS: {FEATURE_OS_MAP.roomAllocation.description}
+              </p>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <a
+                href={`/requests?entry=${selectedEntry.id}`}
+                className="flex-1 px-3 py-2 text-sm text-center bg-accent-blue text-white rounded-lg hover:bg-accent-blue/90 transition-colors"
+              >
+                Request Change
+              </a>
+              <button
+                onClick={() => setSelectedEntry(null)}
+                className="px-4 py-2 text-sm bg-bg-primary border border-border rounded-lg text-text-secondary hover:bg-bg-hover transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
-      </DndContext>
+      )}
     </div>
   );
 }

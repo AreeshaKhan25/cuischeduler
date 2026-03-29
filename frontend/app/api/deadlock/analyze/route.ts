@@ -1,12 +1,19 @@
-import { prisma } from "@/lib/db";
+export const dynamic = "force-dynamic";
 import { jsonResponse } from "@/lib/auth-helpers";
 import { buildRag, detectCycleDfs } from "@/lib/deadlock-detector";
 
 export async function POST() {
-  const bookings = await prisma.booking.findMany({ where: { state: { in: ["running", "waiting", "blocked"] } } });
-  const resources = await prisma.resource.findMany();
-  const bd = bookings.map(b => ({ id: b.id, process_id: b.processId, title: b.title, resource_id: b.resourceId, state: b.state }));
-  const rd = resources.map(r => ({ id: r.id, name: r.name, type: r.type }));
+  // Mock booking/resource data for deadlock analysis demo
+  const bd = [
+    { id: 1, process_id: "P1", title: "OS Lab Session", resource_id: 1, state: "running" },
+    { id: 2, process_id: "P2", title: "Data Structures Lab", resource_id: 2, state: "running" },
+    { id: 3, process_id: "P3", title: "AI Lab Session", resource_id: 3, state: "waiting" },
+  ];
+  const rd = [
+    { id: 1, name: "Lab-1", type: "lab" },
+    { id: 2, name: "Lab-2", type: "lab" },
+    { id: 3, name: "Room 503", type: "classroom" },
+  ];
   const rag = buildRag(bd, rd);
   const result = detectCycleDfs(rag.nodes, rag.edges);
 

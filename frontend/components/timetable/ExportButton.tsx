@@ -4,12 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import { Download, FileText, FileSpreadsheet, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TimetableEntry } from "@/types";
+import { DAYS } from "@/constants/cuiData";
 
 interface ExportButtonProps {
   entries: TimetableEntry[];
 }
-
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export function ExportButton({ entries }: ExportButtonProps) {
   const [open, setOpen] = useState(false);
@@ -24,16 +23,16 @@ export function ExportButton({ entries }: ExportButtonProps) {
   }, []);
 
   const exportCSV = () => {
-    const headers = ["Day", "Start Time", "End Time", "Course Code", "Title", "Faculty", "Room", "Department"];
+    const headers = ["Day", "Start Time", "End Time", "Course Code", "Course Name", "Faculty", "Room", "Section"];
     const rows = entries.map((e) => [
-      DAYS[e.day_of_week - 1] || `Day ${e.day_of_week}`,
-      e.start_time,
-      e.end_time,
-      e.course_code,
-      e.title,
-      e.faculty_name,
-      e.resource_name,
-      e.department,
+      e.dayOfWeek,
+      e.startTime,
+      e.endTime,
+      e.courseOffering?.course?.code || "",
+      e.courseOffering?.course?.name || "",
+      e.courseOffering?.faculty?.name || "TBD",
+      e.resource?.name || "",
+      e.courseOffering?.section?.name || "",
     ]);
 
     const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
@@ -54,58 +53,46 @@ export function ExportButton({ entries }: ExportButtonProps) {
 
       const doc = new jsPDF({ orientation: "landscape" });
 
-      // Title
       doc.setFontSize(18);
       doc.setTextColor(15, 17, 23);
-      doc.text("CUIScheduler - Weekly Timetable", 14, 20);
+      doc.text("CUIScheduler - Timetable", 14, 20);
 
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text("COMSATS University Islamabad, Wah Campus", 14, 28);
       doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 34);
 
-      // Table
+      const dayOrder = Object.fromEntries(DAYS.map((d, i) => [d, i]));
       const tableData = entries
-        .sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time))
+        .sort((a, b) => (dayOrder[a.dayOfWeek] ?? 0) - (dayOrder[b.dayOfWeek] ?? 0) || a.slotIndex - b.slotIndex)
         .map((e) => [
-          DAYS[e.day_of_week - 1] || `Day ${e.day_of_week}`,
-          `${e.start_time} - ${e.end_time}`,
-          e.course_code,
-          e.title,
-          e.faculty_name,
-          e.resource_name,
-          e.department,
+          e.dayOfWeek,
+          `${e.startTime} - ${e.endTime}`,
+          e.courseOffering?.course?.code || "",
+          e.courseOffering?.course?.name || "",
+          e.courseOffering?.faculty?.name || "TBD",
+          e.resource?.name || "",
+          e.courseOffering?.section?.name || "",
         ]);
 
       autoTable(doc, {
         startY: 40,
-        head: [["Day", "Time", "Code", "Title", "Faculty", "Room", "Department"]],
+        head: [["Day", "Time", "Code", "Course", "Faculty", "Room", "Section"]],
         body: tableData,
         theme: "grid",
-        headStyles: {
-          fillColor: [79, 142, 247],
-          textColor: 255,
-          fontSize: 9,
-          fontStyle: "bold",
-        },
-        bodyStyles: {
-          fontSize: 8,
-          textColor: [30, 36, 53],
-        },
-        alternateRowStyles: {
-          fillColor: [245, 247, 255],
-        },
+        headStyles: { fillColor: [79, 142, 247], textColor: 255, fontSize: 9, fontStyle: "bold" },
+        bodyStyles: { fontSize: 8, textColor: [30, 36, 53] },
+        alternateRowStyles: { fillColor: [245, 247, 255] },
         margin: { left: 14, right: 14 },
       });
 
-      // Footer
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
         doc.setFontSize(8);
         doc.setTextColor(150);
         doc.text(
-          `CUIScheduler | OS Course Project | Page ${i} of ${pageCount}`,
+          `CUIScheduler | Page ${i} of ${pageCount}`,
           doc.internal.pageSize.getWidth() / 2,
           doc.internal.pageSize.getHeight() - 10,
           { align: "center" }

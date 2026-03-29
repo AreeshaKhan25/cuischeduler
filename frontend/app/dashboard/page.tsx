@@ -1,216 +1,189 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
-import { GlowCard } from "@/components/ui/GlowCard";
-import { OSConceptBadge } from "@/components/ui/OSConceptBadge";
-import { LivePulse } from "@/components/ui/LivePulse";
+import Link from "next/link";
 import {
-  LayoutDashboard,
-  Clock,
-  Box,
-  Users,
   CalendarDays,
-  Activity,
+  BookOpen,
+  Users,
+  Building2,
+  FileText,
   AlertTriangle,
-  Bell,
+  Wand2,
   Loader2,
+  BarChart3,
 } from "lucide-react";
-import api from "@/lib/api";
+import { dashboardApi } from "@/lib/api";
 
 interface DashboardData {
+  semester: { id: number; code: string; name: string } | null;
   stats: {
-    totalResources: number;
+    totalSections: number;
+    totalCourses: number;
     classrooms: number;
     labs: number;
-    faculty: number;
-    totalBookings: number;
-    activeBookings: number;
-    readyBookings: number;
-    completedBookings: number;
-    blockedBookings: number;
-    waitingBookings: number;
-    newBookings: number;
+    scheduledClasses: number;
+    pendingRequests: number;
     conflicts: number;
-    unreadNotifs: number;
+    roomUtilization: number;
+    totalOfferings: number;
   };
-  recentBookings: {
-    id: number;
-    processId: string;
-    title: string;
-    state: string;
-    resourceName: string;
-    startTime: string;
-    endTime: string;
-    date: string;
-    priority: number;
-    algorithmUsed: string;
-  }[];
-  readyQueue: {
-    id: number;
-    processId: string;
-    title: string;
-    durationMinutes: number;
-    priority: number;
-  }[];
+  recentRequests: any[];
+  userStats: { myScheduleCount: number; myRequestsCount: number };
 }
 
-const stateColors: Record<string, string> = {
-  new: "text-blue-400 bg-blue-400/10 border-blue-400/30",
-  ready: "text-green-400 bg-green-400/10 border-green-400/30",
-  running: "text-teal-400 bg-teal-400/10 border-teal-400/30",
-  waiting: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30",
-  completed: "text-gray-400 bg-gray-400/10 border-gray-400/30",
-  blocked: "text-red-400 bg-red-400/10 border-red-400/30",
-};
+function StatCard({ icon: Icon, label, value, href, color }: {
+  icon: React.ElementType; label: string; value: string | number; href?: string; color: string;
+}) {
+  const content = (
+    <div className="flex items-center gap-3 p-4 bg-bg-secondary border border-border rounded-xl hover:border-border/80 transition-colors">
+      <div className="flex items-center justify-center w-10 h-10 rounded-lg" style={{ backgroundColor: `${color}15` }}>
+        <Icon size={20} style={{ color }} />
+      </div>
+      <div>
+        <p className="text-2xl font-bold text-text-primary">{value}</p>
+        <p className="text-xs text-text-tertiary">{label}</p>
+      </div>
+    </div>
+  );
+  return href ? <Link href={href}>{content}</Link> : content;
+}
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/dashboard").then(res => { setData(res.data); setLoading(false); }).catch(() => setLoading(false));
+    dashboardApi.get().then((res) => {
+      setData(res.data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-accent-blue" />
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="animate-spin text-accent-blue" size={24} />
       </div>
     );
   }
 
-  const s = data?.stats;
+  if (!data) return <div className="text-text-secondary">Failed to load dashboard.</div>;
+
+  const { stats, semester, recentRequests } = data;
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Dashboard"
-        subtitle="Real-time campus resource scheduling overview"
-        breadcrumb={["CUIScheduler", "Dashboard"]}
-        osConcepts={[
-          { name: "CPU Scheduling", chapter: "OS Ch. 5", description: "Booking requests are processes competing for CPU time." },
-          { name: "Resource Allocation", chapter: "OS Ch. 7", description: "Campus resources managed like OS resources." },
-        ]}
-      />
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Resources" value={s?.totalResources || 0} subtitle={`${s?.classrooms || 0} rooms, ${s?.labs || 0} labs, ${s?.faculty || 0} faculty`} icon={Box} osConcept={{ concept: "Resource Pool", chapter: "OS Ch. 7" }} />
-        <StatCard label="Active Bookings" value={s?.activeBookings || 0} subtitle={`${s?.readyBookings || 0} ready, ${s?.waitingBookings || 0} waiting`} icon={Clock} osConcept={{ concept: "Process States", chapter: "OS Ch. 3" }} trend={{ value: s?.readyBookings || 0, positive: true }} />
-        <StatCard label="Completed" value={s?.completedBookings || 0} subtitle={`of ${s?.totalBookings || 0} total bookings`} icon={CalendarDays} />
-        <StatCard label="Conflicts" value={s?.conflicts || 0} subtitle={s?.conflicts ? "Deadlock risk detected" : "System in safe state"} icon={AlertTriangle} osConcept={{ concept: "Deadlock Detection", chapter: "OS Ch. 7" }} trend={s?.conflicts ? { value: s.conflicts, positive: false } : undefined} />
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-display font-bold text-text-primary">Dashboard</h1>
+          {semester && (
+            <p className="text-sm text-text-secondary mt-0.5">
+              {semester.name} ({semester.code})
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href="/timetable"
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg hover:bg-bg-hover transition-colors text-text-secondary"
+          >
+            <CalendarDays size={14} />
+            View Timetable
+          </Link>
+          <Link
+            href="/admin/auto-schedule"
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-accent-blue text-white rounded-lg hover:bg-accent-blue/90 transition-colors"
+          >
+            <Wand2 size={14} />
+            Auto-Schedule
+          </Link>
+        </div>
       </div>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Recent Bookings */}
-        <div className="lg:col-span-2">
-          <GlowCard glowColor="blue">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <Activity size={16} className="text-accent-blue" />
-                Recent Bookings
-              </h3>
-              <LivePulse />
-            </div>
-            {data?.recentBookings?.length ? (
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {data.recentBookings.map(b => (
-                  <div key={b.id} className="flex items-center justify-between p-3 rounded-lg bg-bg-primary/50 border border-border/50">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-[11px] font-mono font-bold text-accent-blue bg-accent-blue/10 px-1.5 py-0.5 rounded">{b.processId}</span>
-                      <div className="min-w-0">
-                        <p className="text-[13px] text-text-primary truncate">{b.title}</p>
-                        <p className="text-[11px] text-text-tertiary">{b.resourceName} &middot; {b.startTime}–{b.endTime}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {b.algorithmUsed && <span className="text-[9px] font-mono text-text-tertiary uppercase">{b.algorithmUsed}</span>}
-                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${stateColors[b.state] || stateColors.new}`}>
-                        {b.state}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-text-tertiary text-center py-8">No bookings yet. Visit the Scheduler to create some.</p>
-            )}
-          </GlowCard>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard icon={Users} label="Sections" value={stats.totalSections} href="/admin/sections" color="#4f8ef7" />
+        <StatCard icon={BookOpen} label="Courses" value={stats.totalCourses} href="/admin/courses" color="#2dd4bf" />
+        <StatCard icon={CalendarDays} label="Scheduled Classes" value={stats.scheduledClasses} href="/timetable" color="#22c55e" />
+        <StatCard icon={BarChart3} label="Room Utilization" value={`${stats.roomUtilization}%`} color="#f59e0b" />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <StatCard icon={Building2} label="Classrooms" value={stats.classrooms} href="/admin/rooms" color="#6b7280" />
+        <StatCard icon={Building2} label="Labs" value={stats.labs} href="/admin/rooms" color="#a855f7" />
+        <StatCard icon={FileText} label="Pending Requests" value={stats.pendingRequests} href="/requests" color={stats.pendingRequests > 0 ? "#f59e0b" : "#22c55e"} />
+      </div>
+
+      {/* Conflicts warning */}
+      {stats.conflicts > 0 && (
+        <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+          <AlertTriangle size={20} className="text-red-400" />
+          <div>
+            <p className="text-sm font-medium text-red-300">
+              {stats.conflicts} change request{stats.conflicts !== 1 ? "s" : ""} with conflicts
+            </p>
+            <p className="text-xs text-red-400/70 mt-0.5">
+              Review in Change Requests to resolve resource conflicts.
+            </p>
+          </div>
+          <Link
+            href="/requests?status=conflict"
+            className="ml-auto text-xs px-3 py-1.5 bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/30 transition-colors"
+          >
+            Review
+          </Link>
         </div>
+      )}
 
-        {/* Right Column */}
-        <div className="space-y-4">
-          {/* Ready Queue */}
-          <GlowCard glowColor="teal">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <Clock size={16} className="text-accent-teal" />
-                Ready Queue
-              </h3>
-              <OSConceptBadge concept="Ready Queue" chapter="Ch.3" size="sm" />
-            </div>
-            {data?.readyQueue?.length ? (
-              <div className="space-y-2">
-                {data.readyQueue.map(b => (
-                  <div key={b.id} className="flex items-center justify-between p-2 rounded-md bg-bg-primary/50 border border-border/50">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold text-accent-teal">{b.processId}</span>
-                      <span className="text-[12px] text-text-secondary truncate max-w-[120px]">{b.title}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-text-tertiary">{b.durationMinutes}min</span>
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30">P{b.priority}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[12px] text-text-tertiary text-center py-4">Queue empty</p>
-            )}
-          </GlowCard>
-
-          {/* System Status */}
-          <GlowCard glowColor="os">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <LayoutDashboard size={16} className="text-os-text" />
-                System Status
-              </h3>
-            </div>
-            <div className="space-y-2.5">
-              {[
-                { label: "New processes", value: s?.newBookings || 0, color: "text-blue-400" },
-                { label: "Ready", value: s?.readyBookings || 0, color: "text-green-400" },
-                { label: "Running", value: s?.activeBookings || 0, color: "text-teal-400" },
-                { label: "Waiting", value: s?.waitingBookings || 0, color: "text-yellow-400" },
-                { label: "Blocked", value: s?.blockedBookings || 0, color: "text-red-400" },
-                { label: "Completed", value: s?.completedBookings || 0, color: "text-gray-400" },
-              ].map(item => (
-                <div key={item.label} className="flex items-center justify-between text-[13px]">
-                  <span className="text-text-secondary">{item.label}</span>
-                  <span className={`font-mono font-bold ${item.color}`}>{item.value}</span>
+      {/* Recent Change Requests */}
+      <div className="bg-bg-secondary border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-text-primary">Recent Change Requests</h2>
+          <Link href="/requests" className="text-xs text-accent-blue hover:underline">
+            View all
+          </Link>
+        </div>
+        {recentRequests.length === 0 ? (
+          <p className="text-sm text-text-tertiary py-4 text-center">No change requests yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentRequests.map((req: any) => (
+              <div key={req.id} className="flex items-center gap-3 p-2.5 bg-bg-primary rounded-lg border border-border/50">
+                <div
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{
+                    backgroundColor: req.status === "approved" ? "#22c55e" :
+                      req.status === "rejected" ? "#ef4444" :
+                      req.status === "conflict" ? "#fb923c" : "#f59e0b"
+                  }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-text-primary truncate">
+                    {req.type.replace("_", " ")} — {req.timetableEntry?.courseOffering?.course?.name || "General"}
+                  </p>
+                  <p className="text-xs text-text-tertiary truncate">
+                    by {req.requestedBy?.name} &middot; {req.reason}
+                  </p>
                 </div>
-              ))}
-            </div>
-          </GlowCard>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded capitalize ${
+                  req.status === "approved" ? "bg-green-500/10 text-green-400" :
+                  req.status === "rejected" ? "bg-red-500/10 text-red-400" :
+                  req.status === "conflict" ? "bg-orange-500/10 text-orange-400" :
+                  "bg-yellow-500/10 text-yellow-400"
+                }`}>
+                  {req.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-          {/* Notifications */}
-          <GlowCard>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <Bell size={16} />
-                Notifications
-              </h3>
-              {(s?.unreadNotifs || 0) > 0 && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-danger/20 text-danger border border-danger/30">{s?.unreadNotifs} unread</span>
-              )}
-            </div>
-            <a href="/notifications" className="text-[12px] text-accent-blue hover:underline">View all notifications &rarr;</a>
-          </GlowCard>
-        </div>
+      {/* OS Concept Note (subtle) */}
+      <div className="text-[10px] font-mono text-text-tertiary text-center opacity-50 pt-4">
+        CUIScheduler maps university scheduling to OS concepts: resource allocation, deadlock detection, CPU scheduling
       </div>
     </div>
   );

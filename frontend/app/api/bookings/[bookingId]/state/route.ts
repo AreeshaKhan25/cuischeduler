@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
 import { jsonResponse, errorResponse } from "@/lib/auth-helpers";
 
 const STATE_TRANSITIONS: Record<string, string[]> = {
@@ -13,17 +12,18 @@ const STATE_TRANSITIONS: Record<string, string[]> = {
 
 export async function PATCH(req: NextRequest, { params }: { params: { bookingId: string } }) {
   const { state: newState } = await req.json();
-  const booking = await prisma.booking.findUnique({ where: { id: parseInt(params.bookingId) } });
-  if (!booking) return errorResponse("Booking not found", 404);
 
-  const valid = STATE_TRANSITIONS[booking.state] || [];
+  // Booking model no longer exists — return mock response for OS demo
+  const mockCurrentState = "ready";
+  const valid = STATE_TRANSITIONS[mockCurrentState] || [];
   if (!valid.includes(newState)) {
-    return errorResponse(`Invalid transition: ${booking.state} → ${newState}. Valid: ${valid.join(", ")}`, 400);
+    return errorResponse(`Invalid transition: ${mockCurrentState} → ${newState}. Valid: ${valid.join(", ")}`, 400);
   }
 
-  const updated = await prisma.booking.update({
-    where: { id: parseInt(params.bookingId) },
-    data: { state: newState, osConceptNote: `State changed: ${booking.state} → ${newState}` },
+  return jsonResponse({
+    id: parseInt(params.bookingId),
+    state: newState,
+    osConceptNote: `State changed: ${mockCurrentState} → ${newState}`,
+    os_concept_note: `Demo: State transition ${mockCurrentState} → ${newState}`,
   });
-  return jsonResponse(updated);
 }

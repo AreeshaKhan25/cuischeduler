@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin, Users, Layers, Monitor, Clock, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Resource } from "@/types";
+import { Resource, ResourceStatus } from "@/types";
 import { ResourceDot } from "@/components/ui/ResourceDot";
 import { OSConceptBadge } from "@/components/ui/OSConceptBadge";
 import { OS_CONCEPTS } from "@/constants/osConcepts";
@@ -105,7 +105,7 @@ export function ResourceDetailPanel({ className }: ResourceDetailPanelProps) {
                   selectedResource.status === "reserved" && "bg-warning-soft border-warning/20",
                   selectedResource.status === "maintenance" && "bg-bg-tertiary border-border",
                 )}>
-                  <ResourceDot status={selectedResource.status} pulse size="lg" />
+                  <ResourceDot status={selectedResource.status as ResourceStatus} pulse size="lg" />
                   <span className={cn(
                     "text-[14px] font-semibold capitalize",
                     selectedResource.status === "available" && "text-success",
@@ -132,7 +132,7 @@ export function ResourceDetailPanel({ className }: ResourceDetailPanelProps) {
                   Features
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {selectedResource.features.map((feat) => (
+                  {((() => { try { const f = selectedResource.features; return Array.isArray(f) ? f : typeof f === 'string' ? JSON.parse(f) : []; } catch { return []; } })() as string[]).map((feat) => (
                     <span
                       key={feat}
                       className="px-2.5 py-1 rounded-md bg-bg-tertiary border border-border text-[12px] text-text-secondary"

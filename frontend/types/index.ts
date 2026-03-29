@@ -1,43 +1,186 @@
-export type ResourceType = 'classroom' | 'lab' | 'faculty' | 'exam_slot';
-export type ResourceStatus = 'available' | 'occupied' | 'reserved' | 'maintenance';
-export type ProcessState = 'new' | 'ready' | 'running' | 'waiting' | 'completed' | 'blocked';
-export type SchedulingAlgorithm = 'FCFS' | 'SJF' | 'RR' | 'PRIORITY';
+// ─── Core Academic Types ─────────────────────────────────────────
+
+export interface Semester {
+  id: number;
+  code: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+}
+
+export interface Course {
+  id: number;
+  code: string;
+  name: string;
+  creditHours: number;
+  isLab: boolean;
+  isTechnical: boolean;
+  department: string;
+}
+
+export interface Section {
+  id: number;
+  name: string;
+  program: string;
+  semester: number;
+  strength: number;
+  department: string;
+}
+
+export interface CourseOffering {
+  id: number;
+  semesterId: number;
+  courseId: number;
+  sectionId: number;
+  facultyId: number | null;
+  classesPerWeek: number;
+  labsPerWeek: number;
+  course?: Course;
+  section?: Section;
+  faculty?: User;
+}
+
+// ─── Timetable Types ─────────────────────────────────────────────
+
+export interface TimetableEntry {
+  id: number;
+  courseOfferingId: number;
+  resourceId: number;
+  semesterId: number;
+  dayOfWeek: string;
+  slotIndex: number;
+  startTime: string;
+  endTime: string;
+  isLab: boolean;
+  courseOffering?: CourseOffering;
+  resource?: Resource;
+}
+
+export interface TimetableCell {
+  entry: TimetableEntry;
+  courseName: string;
+  courseCode: string;
+  facultyName: string;
+  roomName: string;
+  sectionName: string;
+  isLab: boolean;
+  color: string;
+}
+
+// ─── Change Request Types ────────────────────────────────────────
+
+export type ChangeRequestType = 'room_change' | 'time_change' | 'swap';
+export type ChangeRequestStatus = 'pending' | 'approved' | 'rejected' | 'conflict';
+
+export interface ChangeRequest {
+  id: number;
+  requestedById: number;
+  semesterId: number;
+  timetableEntryId: number | null;
+  type: ChangeRequestType;
+  currentDay: string | null;
+  currentSlot: number | null;
+  currentResourceId: number | null;
+  requestedDay: string | null;
+  requestedSlot: number | null;
+  requestedResourceId: number | null;
+  reason: string;
+  status: ChangeRequestStatus;
+  conflictDetails: string | null;
+  suggestedAlternatives: string | null;
+  adminNote: string | null;
+  resolvedById: number | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  osConceptTag: string | null;
+  requestedBy?: User;
+  resolvedBy?: User;
+  timetableEntry?: TimetableEntry;
+}
+
+export interface ConflictInfo {
+  hasConflict: boolean;
+  details: string;
+  conflictingEntry?: TimetableEntry;
+}
+
+export interface AlternativeSuggestion {
+  day: string;
+  slotIndex: number;
+  startTime: string;
+  endTime: string;
+  resourceId: number;
+  resourceName: string;
+  reason: string;
+}
+
+// ─── Auto-Scheduler Types ────────────────────────────────────────
+
+export interface AutoScheduleResult {
+  placed: number;
+  failed: number;
+  total: number;
+  entries: TimetableEntry[];
+  unplaceable: UnplaceableItem[];
+  osNote: string;
+}
+
+export interface UnplaceableItem {
+  courseOfferingId: number;
+  courseName: string;
+  sectionName: string;
+  reason: string;
+}
+
+// ─── User & Resource Types ───────────────────────────────────────
+
+export interface User {
+  id: number;
+  email: string;
+  name: string;
+  role: 'admin' | 'faculty' | 'student';
+  department: string;
+  sectionId: number | null;
+  createdAt: string;
+}
 
 export interface Resource {
-  id: string;
+  id: number;
   name: string;
-  type: ResourceType;
+  type: 'classroom' | 'lab';
   building: string;
   floor: number;
   capacity: number;
-  status: ResourceStatus;
-  features: string[];
+  status: string;
+  features: string;
   department: string;
 }
 
-export interface BookingRequest {
-  id: string;
-  process_id: string;
-  title: string;
-  course_code: string;
-  department: string;
-  faculty_id: string;
-  resource_id: string;
-  resource_type: ResourceType;
-  requested_by: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  duration_minutes: number;
-  priority: number;
-  state: ProcessState;
-  arrival_time: number;
-  waiting_time: number;
-  turnaround_time: number;
-  algorithm_used: SchedulingAlgorithm;
-  os_concept_note: string;
-  created_at: string;
+export interface Notification {
+  id: number;
+  userId: number | null;
+  type: string;
+  subject: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
 }
+
+// ─── Dashboard Types ─────────────────────────────────────────────
+
+export interface DashboardStats {
+  totalSections: number;
+  totalCourses: number;
+  scheduledClasses: number;
+  roomUtilization: number;
+  pendingRequests: number;
+  conflicts: number;
+}
+
+// ─── OS Concept Types (secondary layer) ──────────────────────────
+
+export type SchedulingAlgorithm = 'FCFS' | 'SJF' | 'RR' | 'PRIORITY';
 
 export interface SchedulingStep {
   step_number: number;
@@ -46,7 +189,7 @@ export interface SchedulingStep {
   time_unit: number;
   reason: string;
   os_concept_note: string;
-  queue_snapshot: { pid: string; burst: number; priority: number; state: ProcessState }[];
+  queue_snapshot: { pid: string; burst: number; priority: number; state: string }[];
   gantt_bar: { pid: string; start: number; end: number; color: string };
 }
 
@@ -128,18 +271,6 @@ export interface ResourcePoolState {
   allocation_map: { slot: number; booking_id: string; resource_name: string }[];
 }
 
-export interface IPCMessage {
-  id: string;
-  from_department: string;
-  to_department: string;
-  type: 'booking_confirmed' | 'conflict' | 'resource_freed' | 'exam_scheduled' | 'broadcast';
-  subject: string;
-  body: string;
-  read: boolean;
-  created_at: string;
-  os_concept: string;
-}
-
 export interface AlgorithmComparison {
   algorithm: SchedulingAlgorithm;
   avg_waiting_time: number;
@@ -150,34 +281,50 @@ export interface AlgorithmComparison {
   best_for: string;
 }
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'admin' | 'faculty' | 'student';
-  department: string;
-  created_at: string;
-}
-
-export interface TimetableEntry {
-  id: string;
-  booking_id: string;
-  resource_id: string;
-  resource_name: string;
-  course_code: string;
-  title: string;
-  faculty_name: string;
-  department: string;
-  day_of_week: number;
-  start_time: string;
-  end_time: string;
-  color: string;
-}
-
 export interface AnalyticsData {
   utilization: { resource_id: string; resource_name: string; utilization_pct: number }[];
   algorithm_comparison: AlgorithmComparison[];
   heatmap: number[][];
   faculty_load: { faculty_id: string; name: string; hours: number; max_hours: number }[];
   fragmentation_history: { date: string; fragmentation_pct: number }[];
+}
+
+export type ResourceType = 'classroom' | 'lab' | 'faculty' | 'exam_slot';
+export type ResourceStatus = 'available' | 'occupied' | 'reserved' | 'maintenance';
+export type ProcessState = 'new' | 'ready' | 'running' | 'waiting' | 'completed' | 'blocked';
+
+export interface BookingRequest {
+  id: string;
+  process_id: string;
+  title: string;
+  course_code: string;
+  department: string;
+  faculty_id: string;
+  resource_id: string;
+  resource_type: ResourceType;
+  requested_by: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  priority: number;
+  state: ProcessState;
+  arrival_time: number;
+  waiting_time: number;
+  turnaround_time: number;
+  algorithm_used: SchedulingAlgorithm;
+  os_concept_note: string;
+  created_at: string;
+}
+
+export interface IPCMessage {
+  id: string;
+  from_department: string;
+  to_department: string;
+  type: string;
+  subject: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+  os_concept: string;
 }

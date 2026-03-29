@@ -6,30 +6,36 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
+  CalendarDays,
+  FileText,
+  Wand2,
+  BookOpen,
+  Users,
+  Building2,
+  UserCog,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  GraduationCap,
+  Cpu,
   Clock,
   ShieldAlert,
   Layers,
-  Box,
-  CalendarDays,
-  BarChart3,
   Bell,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Cpu,
-  GraduationCap,
+  BarChart3,
 } from "lucide-react";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
-  chapter?: string;
+  adminOnly?: boolean;
 }
 
 interface NavSection {
   title: string;
   items: NavItem[];
+  collapsible?: boolean;
 }
 
 const navSections: NavSection[] = [
@@ -40,31 +46,31 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    title: "OS Concepts",
+    title: "Scheduling",
     items: [
-      { label: "Scheduling", href: "/scheduler", icon: Clock, chapter: "Ch.5" },
-      { label: "Deadlock", href: "/deadlock", icon: ShieldAlert, chapter: "Ch.8" },
-      { label: "Concurrency", href: "/concurrency", icon: Layers, chapter: "Ch.6" },
-      { label: "Resources", href: "/resources", icon: Box, chapter: "Ch.7" },
+      { label: "Timetable", href: "/timetable", icon: CalendarDays },
+      { label: "Change Requests", href: "/requests", icon: FileText },
     ],
   },
   {
-    title: "Management",
+    title: "Administration",
     items: [
-      { label: "Timetable", href: "/timetable", icon: CalendarDays },
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
-      { label: "Notifications", href: "/notifications", icon: Bell },
-      { label: "Admin", href: "/admin", icon: Settings },
+      { label: "Auto-Schedule", href: "/admin/auto-schedule", icon: Wand2, adminOnly: true },
+      { label: "Courses", href: "/admin/courses", icon: BookOpen, adminOnly: true },
+      { label: "Sections", href: "/admin/sections", icon: Users, adminOnly: true },
+      { label: "Rooms & Labs", href: "/admin/rooms", icon: Building2, adminOnly: true },
+      { label: "Users", href: "/admin/users", icon: UserCog, adminOnly: true },
     ],
   },
-];
-
-const conceptLegend = [
-  { label: "CPU Scheduling", color: "#4f8ef7" },
-  { label: "Deadlock", color: "#ef4444" },
-  { label: "Concurrency", color: "#2dd4bf" },
-  { label: "Memory/Resources", color: "#f59e0b" },
-  { label: "Synchronization", color: "#c084fc" },
+  {
+    title: "OS Concepts Lab",
+    collapsible: true,
+    items: [
+      { label: "CPU Scheduling", href: "/os/scheduler", icon: Clock },
+      { label: "Deadlock", href: "/os/deadlock", icon: ShieldAlert },
+      { label: "Concurrency", href: "/os/concurrency", icon: Layers },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -74,6 +80,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const [osExpanded, setOsExpanded] = useState(false);
 
   return (
     <aside
@@ -81,7 +88,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         "fixed left-0 top-0 h-screen z-40 flex flex-col",
         "bg-bg-secondary border-r border-border",
         "transition-all duration-300 ease-in-out",
-        collapsed ? "w-[68px]" : "w-[280px]"
+        collapsed ? "w-[68px]" : "w-[260px]"
       )}
     >
       {/* Logo */}
@@ -96,7 +103,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 CUIScheduler
               </h1>
               <p className="text-[9px] text-text-tertiary font-mono tracking-wide truncate">
-                COMSATS Wah - OS Project 2025
+                COMSATS Wah &middot; SP-26
               </p>
             </div>
           </div>
@@ -110,79 +117,60 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-        {navSections.map((section) => (
-          <div key={section.title}>
-            {!collapsed && (
-              <h3 className="px-3 mb-1.5 text-[10px] font-mono font-semibold text-text-tertiary uppercase tracking-[0.15em]">
-                {section.title}
-              </h3>
-            )}
-            <ul className="space-y-0.5">
-              {section.items.map((item) => {
-                const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
-                const Icon = item.icon;
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium",
-                        "transition-all duration-150",
-                        isActive
-                          ? "bg-accent-blue-soft text-accent-blue border border-accent-blue/20"
-                          : "text-text-secondary hover:text-text-primary hover:bg-bg-hover border border-transparent",
-                        collapsed && "justify-center px-2"
-                      )}
-                      title={collapsed ? item.label : undefined}
-                    >
-                      <Icon size={18} className="flex-shrink-0" />
-                      {!collapsed && (
-                        <>
-                          <span className="flex-1 truncate">{item.label}</span>
-                          {item.chapter && (
-                            <span
-                              className={cn(
-                                "text-[9px] font-mono px-1.5 py-0.5 rounded",
-                                isActive
-                                  ? "bg-accent-blue/20 text-accent-blue"
-                                  : "bg-os-bg text-os-text"
-                              )}
-                            >
-                              {item.chapter}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
-      </nav>
+        {navSections.map((section) => {
+          const isCollapsible = section.collapsible;
+          const isExpanded = !isCollapsible || osExpanded;
 
-      {/* OS Concept Legend */}
-      {!collapsed && (
-        <div className="px-4 py-3 border-t border-border flex-shrink-0">
-          <h4 className="text-[9px] font-mono font-semibold text-text-tertiary uppercase tracking-[0.15em] mb-2">
-            OS Concept Map
-          </h4>
-          <div className="space-y-1.5">
-            {conceptLegend.map((item) => (
-              <div key={item.label} className="flex items-center gap-2">
-                <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: item.color }}
-                />
-                <span className="text-[11px] text-text-secondary">
-                  {item.label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+          return (
+            <div key={section.title}>
+              {!collapsed && (
+                <button
+                  onClick={() => isCollapsible && setOsExpanded(!osExpanded)}
+                  className={cn(
+                    "flex items-center w-full px-3 mb-1.5 text-[10px] font-mono font-semibold text-text-tertiary uppercase tracking-[0.15em]",
+                    isCollapsible && "cursor-pointer hover:text-text-secondary"
+                  )}
+                >
+                  <span>{section.title}</span>
+                  {isCollapsible && (
+                    <ChevronDown
+                      size={12}
+                      className={cn("ml-auto transition-transform", isExpanded && "rotate-180")}
+                    />
+                  )}
+                </button>
+              )}
+              {isExpanded && (
+                <ul className="space-y-0.5">
+                  {section.items.map((item) => {
+                    const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium",
+                            "transition-all duration-150",
+                            isActive
+                              ? "bg-accent-blue-soft text-accent-blue border border-accent-blue/20"
+                              : "text-text-secondary hover:text-text-primary hover:bg-bg-hover border border-transparent",
+                            collapsed && "justify-center px-2"
+                          )}
+                          title={collapsed ? item.label : undefined}
+                        >
+                          <Icon size={18} className="flex-shrink-0" />
+                          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </nav>
 
       {/* Collapse Toggle */}
       <button

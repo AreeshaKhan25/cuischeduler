@@ -1,40 +1,52 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { jsonResponse, errorResponse } from "@/lib/auth-helpers";
-import { runFcfs, runSjf, runPriority } from "@/lib/scheduling-engine";
+import { jsonResponse, errorResponse, getCurrentUser } from "@/lib/auth-helpers";
+import { autoSchedule } from "@/lib/auto-scheduler";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const { booking_ids, algorithm, week_start_date } = await request.json();
-  const bookings = await prisma.booking.findMany({ where: { id: { in: booking_ids } } });
-  if (!bookings.length) return errorResponse("No bookings found", 404);
-  const resources = await prisma.resource.findMany({ where: { status: "available" }, orderBy: { id: "asc" } });
-  if (!resources.length) return errorResponse("No available resources");
+  const user = await getCurrentUser(request);
+  if (!user || user.role !== "admin") return errorResponse("Admin only", 403);
 
-  const data = bookings.map(b => ({ id: b.id, process_id: b.processId, title: b.title, arrival_time: b.arrivalTime, duration_minutes: b.durationMinutes, priority: b.priority }));
-  const algo = (algorithm || "fcfs").toLowerCase();
-  const result = algo === "sjf" ? runSjf(data) : algo === "priority" ? runPriority(data) : runFcfs(data);
+  const body = await request.json().catch(() => ({}));
+  let semesterId = body.semesterId;
 
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const weekStart = week_start_date || new Date().toISOString().split("T")[0];
-  const created = [];
-  let resIdx = 0, dayIdx = 0, hour = 8;
-
-  for (const m of result.metrics) {
-    const booking = bookings.find(b => b.id === m.booking_id);
-    if (!booking) continue;
-    const durH = Math.max(1, Math.floor(booking.durationMinutes / 60));
-    const endH = Math.min(hour + durH, 18);
-    const st = `${String(hour).padStart(2, "0")}:00`;
-    const et = `${String(endH).padStart(2, "0")}:00`;
-    const res = resources[resIdx % resources.length];
-
-    await prisma.timetableEntry.create({ data: { bookingId: booking.id, resourceId: res.id, dayOfWeek: days[dayIdx % 5], startTime: st, endTime: et, weekStartDate: weekStart } });
-    await prisma.booking.update({ where: { id: booking.id }, data: { resourceId: res.id, startTime: st, endTime: et, state: "ready", algorithmUsed: algorithm } });
-
-    created.push({ booking_id: booking.id, process_id: booking.processId, resource_name: res.name, day: days[dayIdx % 5], time: `${st}-${et}` });
-    hour = endH;
-    if (hour >= 17) { hour = 8; dayIdx++; if (dayIdx >= 5) { resIdx++; dayIdx = 0; } }
+  // Default to active semester
+  if (!semesterId) {
+    const active = await prisma.semester.findFirst({ where: { isActive: true } });
+    if (!active) return errorResponse("No active semester found");
+    semesterId = active.id;
   }
 
-  return jsonResponse({ scheduled: created.length, entries: created, algorithm_used: algorithm, scheduling_result: result, os_concept_note: `Auto-scheduled ${created.length} processes using ${algorithm}.` });
+  const clear = body.clear ?? true;
+  if (clear) {
+    await prisma.timetableEntry.deleteMany({ where: { semesterId } });
+  }
+
+  const result = await autoSchedule(prisma, semesterId);
+
+  // Save placements to DB
+  if (result.placements.length > 0) {
+    await prisma.timetableEntry.createMany({
+      data: result.placements.map((p) => ({
+        courseOfferingId: p.courseOfferingId,
+        resourceId: p.resourceId,
+        semesterId,
+        dayOfWeek: p.dayOfWeek,
+        slotIndex: p.slotIndex,
+        startTime: p.startTime,
+        endTime: p.endTime,
+        isLab: p.isLab,
+      })),
+    });
+  }
+
+  return jsonResponse({
+    placed: result.placed,
+    failed: result.failed,
+    total: result.total,
+    failures: result.failures,
+    osNote: result.osNote,
+  });
 }

@@ -7,95 +7,170 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id              Int       @id @default(autoincrement())
-  email           String    @unique
-  name            String
-  hashedPassword  String    @map("hashed_password")
-  role            String    @default("student") // admin, faculty, student
-  department      String    @default("Computer Science")
-  createdAt       DateTime  @default(now()) @map("created_at")
+// ─── Core Academic Models ────────────────────────────────────────
 
-  bookingsRequested Booking[] @relation("requester")
-  bookingsFaculty   Booking[] @relation("faculty")
+model Semester {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique           // "SP-26", "FA-26"
+  name      String                     // "Spring 2026"
+  startDate String   @map("start_date")
+  endDate   String   @map("end_date")
+  isActive  Boolean  @default(false) @map("is_active")
+
+  courseOfferings  CourseOffering[]
+  timetableEntries TimetableEntry[]
+  changeRequests   ChangeRequest[]
+
+  @@map("semesters")
+}
+
+model Course {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique           // "CSC341"
+  name        String                    // "Operating Systems"
+  creditHours Int     @default(3) @map("credit_hours")
+  isLab       Boolean @default(false) @map("is_lab")
+  isTechnical Boolean @default(true) @map("is_technical")
+  department  String  @default("Computer Science")
+
+  offerings CourseOffering[]
+
+  @@map("courses")
+}
+
+model Section {
+  id         Int    @id @default(autoincrement())
+  name       String @unique              // "BCS-1A", "BSE-5"
+  program    String                      // "BCS", "BSE", "BAI"
+  semester   Int                         // 1-8 (academic semester number)
+  strength   Int    @default(50)
+  department String @default("Computer Science")
+
+  courseOfferings CourseOffering[]
+
+  @@map("sections")
+}
+
+model CourseOffering {
+  id             Int  @id @default(autoincrement())
+  semesterId     Int  @map("semester_id")
+  courseId        Int  @map("course_id")
+  sectionId      Int  @map("section_id")
+  facultyId      Int? @map("faculty_id")
+  classesPerWeek Int  @default(2) @map("classes_per_week")
+  labsPerWeek    Int  @default(0) @map("labs_per_week")
+
+  semester         Semester         @relation(fields: [semesterId], references: [id])
+  course           Course           @relation(fields: [courseId], references: [id])
+  section          Section          @relation(fields: [sectionId], references: [id])
+  faculty          User?            @relation("facultyOfferings", fields: [facultyId], references: [id])
+  timetableEntries TimetableEntry[]
+
+  @@unique([semesterId, courseId, sectionId])
+  @@map("course_offerings")
+}
+
+// ─── Timetable ───────────────────────────────────────────────────
+
+model TimetableEntry {
+  id               Int     @id @default(autoincrement())
+  courseOfferingId  Int     @map("course_offering_id")
+  resourceId       Int     @map("resource_id")
+  semesterId       Int     @map("semester_id")
+  dayOfWeek        String  @map("day_of_week")   // "Monday"-"Friday"
+  slotIndex        Int     @map("slot_index")     // 0-6
+  startTime        String  @map("start_time")     // "08:30"
+  endTime          String  @map("end_time")       // "09:25"
+  isLab            Boolean @default(false) @map("is_lab")
+
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  resource       Resource       @relation(fields: [resourceId], references: [id])
+  semester       Semester       @relation(fields: [semesterId], references: [id])
+
+  changeRequests ChangeRequest[]
+
+  @@unique([resourceId, semesterId, dayOfWeek, slotIndex])
+  @@map("timetable_entries")
+}
+
+// ─── Change Request Workflow ─────────────────────────────────────
+
+model ChangeRequest {
+  id               Int      @id @default(autoincrement())
+  requestedById    Int      @map("requested_by_id")
+  semesterId       Int      @map("semester_id")
+  timetableEntryId Int?     @map("timetable_entry_id")
+
+  type                String               // "room_change", "time_change", "swap"
+  currentDay          String?  @map("current_day")
+  currentSlot         Int?     @map("current_slot")
+  currentResourceId   Int?     @map("current_resource_id")
+  requestedDay        String?  @map("requested_day")
+  requestedSlot       Int?     @map("requested_slot")
+  requestedResourceId Int?     @map("requested_resource_id")
+  reason              String
+
+  status              String   @default("pending") // pending, approved, rejected, conflict
+  conflictDetails     String?  @map("conflict_details")
+  suggestedAlternatives String? @map("suggested_alternatives")
+  adminNote           String?  @map("admin_note")
+  resolvedById        Int?     @map("resolved_by_id")
+  resolvedAt          DateTime? @map("resolved_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  osConceptTag        String?  @map("os_concept_tag")
+
+  requestedBy    User            @relation("changeRequester", fields: [requestedById], references: [id])
+  resolvedBy     User?           @relation("changeResolver", fields: [resolvedById], references: [id])
+  semester       Semester        @relation(fields: [semesterId], references: [id])
+  timetableEntry TimetableEntry? @relation(fields: [timetableEntryId], references: [id])
+
+  @@map("change_requests")
+}
+
+// ─── Existing Models (updated) ───────────────────────────────────
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  name           String
+  hashedPassword String   @map("hashed_password")
+  role           String   @default("student") // admin, faculty, student
+  department     String   @default("Computer Science")
+  sectionId      Int?     @map("section_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  facultyOfferings   CourseOffering[] @relation("facultyOfferings")
+  requestedChanges   ChangeRequest[]  @relation("changeRequester")
+  resolvedChanges    ChangeRequest[]  @relation("changeResolver")
 
   @@map("users")
 }
 
 model Resource {
-  id         Int     @id @default(autoincrement())
+  id         Int    @id @default(autoincrement())
   name       String
-  type       String  @default("classroom") // classroom, lab, faculty, exam_slot
-  building   String  @default("Main Building")
-  floor      Int     @default(1)
-  capacity   Int     @default(40)
-  status     String  @default("available") // available, occupied, maintenance
-  features   String  @default("{}") // JSON stored as text
-  department String  @default("Computer Science")
+  type       String @default("classroom") // classroom, lab
+  building   String @default("Academic Block")
+  floor      Int    @default(0)
+  capacity   Int    @default(40)
+  status     String @default("available") // available, maintenance
+  features   String @default("{}") // JSON
+  department String @default("General")
 
-  bookings         Booking[]
   timetableEntries TimetableEntry[]
 
   @@map("resources")
 }
 
-model Booking {
-  id              Int      @id @default(autoincrement())
-  processId       String   @unique @map("process_id")
-  title           String
-  courseCode       String?  @map("course_code")
-  department      String   @default("Computer Science")
-  facultyId       Int?     @map("faculty_id")
-  resourceId      Int?     @map("resource_id")
-  resourceType    String   @default("classroom") @map("resource_type")
-  requestedBy     Int?     @map("requested_by")
-  date            String   // YYYY-MM-DD
-  startTime       String?  @map("start_time") // HH:MM
-  endTime         String?  @map("end_time")   // HH:MM
-  durationMinutes Int      @default(60) @map("duration_minutes")
-  priority        Int      @default(5)
-  state           String   @default("new") // new, ready, running, waiting, completed, blocked
-  arrivalTime     Float    @default(0) @map("arrival_time")
-  waitingTime     Float    @default(0) @map("waiting_time")
-  turnaroundTime  Float    @default(0) @map("turnaround_time")
-  algorithmUsed   String?  @map("algorithm_used")
-  osConceptNote   String?  @map("os_concept_note")
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  faculty   User?     @relation("faculty", fields: [facultyId], references: [id])
-  requester User?     @relation("requester", fields: [requestedBy], references: [id])
-  resource  Resource? @relation(fields: [resourceId], references: [id])
-
-  timetableEntry TimetableEntry?
-
-  @@map("bookings")
-}
-
-model TimetableEntry {
-  id            Int      @id @default(autoincrement())
-  bookingId     Int?     @unique @map("booking_id")
-  resourceId    Int?     @map("resource_id")
-  dayOfWeek     String   @map("day_of_week") // Monday-Friday
-  startTime     String   @map("start_time")  // HH:MM
-  endTime       String   @map("end_time")    // HH:MM
-  weekStartDate String?  @map("week_start_date") // YYYY-MM-DD
-
-  booking  Booking?  @relation(fields: [bookingId], references: [id])
-  resource Resource? @relation(fields: [resourceId], references: [id])
-
-  @@map("timetable_entries")
-}
-
 model Notification {
   id             Int      @id @default(autoincrement())
-  fromDepartment String   @map("from_department")
-  toDepartment   String   @map("to_department")
-  type           String   @default("info") // request, alert, info, response
+  userId         Int?     @map("user_id")
+  type           String   @default("info") // info, request_update, schedule_change, system
   subject        String
   body           String
   read           Boolean  @default(false)
   createdAt      DateTime @default(now()) @map("created_at")
-  osConcept      String?  @map("os_concept")
 
   @@map("notifications")
 }

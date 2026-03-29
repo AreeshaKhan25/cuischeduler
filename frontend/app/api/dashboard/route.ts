@@ -1,52 +1,97 @@
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/db";
-import { jsonResponse } from "@/lib/auth-helpers";
+import { jsonResponse, getCurrentUser } from "@/lib/auth-helpers";
+import { NextRequest } from "next/server";
 
-export async function GET() {
-  const [totalResources, classrooms, labs, faculty, totalBookings, activeBookings, readyBookings, completedBookings, blockedBookings, waitingBookings, newBookings, notifications, unreadNotifs] = await Promise.all([
-    prisma.resource.count(),
+export async function GET(request: NextRequest) {
+  const user = await getCurrentUser(request);
+
+  // Get active semester
+  const semester = await prisma.semester.findFirst({ where: { isActive: true } });
+  const semesterId = semester?.id;
+
+  const [
+    totalSections,
+    totalCourses,
+    classrooms,
+    labs,
+    scheduledClasses,
+    pendingRequests,
+    totalOfferings,
+  ] = await Promise.all([
+    prisma.section.count(),
+    prisma.course.count(),
     prisma.resource.count({ where: { type: "classroom" } }),
     prisma.resource.count({ where: { type: "lab" } }),
-    prisma.resource.count({ where: { type: "faculty" } }),
-    prisma.booking.count(),
-    prisma.booking.count({ where: { state: "running" } }),
-    prisma.booking.count({ where: { state: "ready" } }),
-    prisma.booking.count({ where: { state: "completed" } }),
-    prisma.booking.count({ where: { state: "blocked" } }),
-    prisma.booking.count({ where: { state: "waiting" } }),
-    prisma.booking.count({ where: { state: "new" } }),
-    prisma.notification.count(),
-    prisma.notification.count({ where: { read: false } }),
+    semesterId ? prisma.timetableEntry.count({ where: { semesterId } }) : Promise.resolve(0),
+    semesterId ? prisma.changeRequest.count({ where: { semesterId, status: "pending" } }) : Promise.resolve(0),
+    semesterId ? prisma.courseOffering.count({ where: { semesterId } }) : Promise.resolve(0),
   ]);
 
-  const recentBookings = await prisma.booking.findMany({
-    orderBy: { createdAt: "desc" }, take: 10,
-    include: { resource: true },
+  // Room utilization: rooms with at least one entry / total rooms
+  const usedRooms = semesterId
+    ? await prisma.timetableEntry.findMany({
+        where: { semesterId },
+        select: { resourceId: true },
+        distinct: ["resourceId"],
+      })
+    : [];
+  const totalRooms = classrooms + labs;
+  const roomUtilization = totalRooms > 0 ? Math.round((usedRooms.length / totalRooms) * 100) : 0;
+
+  // Conflict count (change requests with status 'conflict')
+  const conflicts = semesterId
+    ? await prisma.changeRequest.count({ where: { semesterId, status: "conflict" } })
+    : 0;
+
+  // Recent change requests
+  const recentRequests = await prisma.changeRequest.findMany({
+    take: 5,
+    orderBy: { createdAt: "desc" },
+    include: {
+      requestedBy: { select: { name: true, role: true } },
+      timetableEntry: {
+        include: {
+          courseOffering: { include: { course: true, section: true } },
+          resource: true,
+        },
+      },
+    },
   });
 
-  const readyQueue = await prisma.booking.findMany({
-    where: { state: "ready" }, orderBy: { arrivalTime: "asc" }, take: 6,
-  });
-
-  const conflicts = blockedBookings;
+  // Role-specific data
+  let myScheduleCount = 0;
+  let myRequestsCount = 0;
+  if (user) {
+    if (user.role === "faculty") {
+      myScheduleCount = semesterId
+        ? await prisma.timetableEntry.count({
+            where: { semesterId, courseOffering: { facultyId: user.id } },
+          })
+        : 0;
+    }
+    myRequestsCount = await prisma.changeRequest.count({
+      where: { requestedById: user.id },
+    });
+  }
 
   return jsonResponse({
+    semester: semester ? { id: semester.id, code: semester.code, name: semester.name } : null,
     stats: {
-      totalResources, classrooms, labs, faculty,
-      totalBookings, activeBookings, readyBookings, completedBookings,
-      blockedBookings, waitingBookings, newBookings,
-      conflicts, notifications, unreadNotifs,
+      totalSections,
+      totalCourses,
+      classrooms,
+      labs,
+      scheduledClasses,
+      pendingRequests,
+      conflicts,
+      roomUtilization,
+      totalOfferings,
     },
-    recentBookings: recentBookings.map(b => ({
-      id: b.id, processId: b.processId, title: b.title, state: b.state,
-      resourceName: b.resource?.name || "Unassigned",
-      startTime: b.startTime, endTime: b.endTime, date: b.date,
-      priority: b.priority, algorithmUsed: b.algorithmUsed,
-    })),
-    readyQueue: readyQueue.map(b => ({
-      id: b.id, processId: b.processId, title: b.title,
-      durationMinutes: b.durationMinutes, priority: b.priority,
-      arrivalTime: b.arrivalTime,
-    })),
+    recentRequests,
+    userStats: {
+      myScheduleCount,
+      myRequestsCount,
+    },
   });
 }
