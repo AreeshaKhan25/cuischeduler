@@ -4,31 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  CalendarDays,
-  FileText,
-  Wand2,
-  BookOpen,
-  Users,
-  Building2,
-  UserCog,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  GraduationCap,
-  Cpu,
-  Clock,
-  ShieldAlert,
-  Layers,
-  Bell,
-  BarChart3,
-} from "lucide-react";
 
 interface NavItem {
   label: string;
   href: string;
-  icon: React.ElementType;
+  icon: string; // Material Symbol name
   adminOnly?: boolean;
 }
 
@@ -42,35 +22,32 @@ const navSections: NavSection[] = [
   {
     title: "Overview",
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
     ],
   },
   {
     title: "Scheduling",
     items: [
-      { label: "Timetable", href: "/timetable", icon: CalendarDays },
-      { label: "Change Requests", href: "/requests", icon: FileText },
+      { label: "Timetable", href: "/timetable", icon: "calendar_month" },
+      { label: "Requests", href: "/requests", icon: "description" },
     ],
   },
   {
     title: "Administration",
     items: [
-      { label: "Auto-Schedule", href: "/admin/auto-schedule", icon: Wand2, adminOnly: true },
-      { label: "Courses", href: "/admin/courses", icon: BookOpen, adminOnly: true },
-      { label: "Sections", href: "/admin/sections", icon: Users, adminOnly: true },
-      { label: "Rooms & Labs", href: "/admin/rooms", icon: Building2, adminOnly: true },
-      { label: "Users", href: "/admin/users", icon: UserCog, adminOnly: true },
+      { label: "Auto-Schedule", href: "/admin/auto-schedule", icon: "auto_fix_high", adminOnly: true },
+      { label: "Courses", href: "/admin/courses", icon: "menu_book", adminOnly: true },
+      { label: "Sections", href: "/admin/sections", icon: "groups", adminOnly: true },
+      { label: "Rooms & Labs", href: "/admin/rooms", icon: "domain", adminOnly: true },
+      { label: "Users", href: "/admin/users", icon: "manage_accounts", adminOnly: true },
     ],
   },
-  {
-    title: "OS Concepts Lab",
-    collapsible: true,
-    items: [
-      { label: "CPU Scheduling", href: "/os/scheduler", icon: Clock },
-      { label: "Deadlock", href: "/os/deadlock", icon: ShieldAlert },
-      { label: "Concurrency", href: "/os/concurrency", icon: Layers },
-    ],
-  },
+];
+
+const osSubsystems = [
+  { label: "CPU Scheduling", href: "/os/scheduler" },
+  { label: "Deadlock", href: "/os/deadlock" },
+  { label: "Concurrency", href: "/os/concurrency" },
 ];
 
 interface SidebarProps {
@@ -85,100 +62,124 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 h-screen z-40 flex flex-col",
-        "bg-bg-secondary border-r border-border",
-        "transition-all duration-300 ease-in-out",
-        collapsed ? "w-[68px]" : "w-[260px]"
+        "fixed left-0 top-0 h-screen z-50 flex flex-col",
+        "bg-slate-50 transition-all duration-300 ease-in-out",
+        collapsed ? "w-[68px]" : "w-[220px]"
       )}
+      style={{ borderRight: "none" }}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between px-4 h-16 border-b border-border flex-shrink-0">
-        {!collapsed && (
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-blue-soft border border-accent-blue/30">
-              <GraduationCap size={18} className="text-accent-blue" />
+      <div className="flex items-center gap-2 px-4 h-16 flex-shrink-0">
+        {!collapsed ? (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 text-lg font-bold text-blue-600">
+              <span className="material-symbols-outlined text-2xl">dashboard_customize</span>
+              <span className="tracking-tight">CUIScheduler</span>
             </div>
-            <div className="min-w-0">
-              <h1 className="text-sm font-display font-bold text-text-primary tracking-tight truncate">
-                CUIScheduler
-              </h1>
-              <p className="text-[9px] text-text-tertiary font-mono tracking-wide truncate">
-                COMSATS Wah &middot; SP-26
-              </p>
-            </div>
+            <span className="font-mono text-[10px] tracking-tight text-slate-400 uppercase px-1 -mt-1">
+              V3 Academic
+            </span>
           </div>
-        )}
-        {collapsed && (
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-blue-soft border border-accent-blue/30 mx-auto">
-            <GraduationCap size={18} className="text-accent-blue" />
-          </div>
+        ) : (
+          <span className="material-symbols-outlined text-2xl text-blue-600 mx-auto">
+            dashboard_customize
+          </span>
         )}
       </div>
 
+      {/* New Booking Button */}
+      {!collapsed && (
+        <div className="px-4 mb-2">
+          <Link
+            href="/requests"
+            className="w-full py-2.5 bg-blue-600 text-white font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition-all flex items-center justify-center gap-2 text-sm"
+          >
+            <span className="material-symbols-outlined text-sm">add</span>
+            + New Booking
+          </Link>
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-        {navSections.map((section) => {
-          const isCollapsible = section.collapsible;
-          const isExpanded = !isCollapsible || osExpanded;
-
-          return (
-            <div key={section.title}>
-              {!collapsed && (
-                <button
-                  onClick={() => isCollapsible && setOsExpanded(!osExpanded)}
-                  className={cn(
-                    "flex items-center w-full px-3 mb-1.5 text-[10px] font-mono font-semibold text-text-tertiary uppercase tracking-[0.15em]",
-                    isCollapsible && "cursor-pointer hover:text-text-secondary"
-                  )}
-                >
-                  <span>{section.title}</span>
-                  {isCollapsible && (
-                    <ChevronDown
-                      size={12}
-                      className={cn("ml-auto transition-transform", isExpanded && "rotate-180")}
-                    />
-                  )}
-                </button>
-              )}
-              {isExpanded && (
-                <ul className="space-y-0.5">
-                  {section.items.map((item) => {
-                    const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
-                    const Icon = item.icon;
-                    return (
-                      <li key={item.href}>
-                        <Link
-                          href={item.href}
-                          className={cn(
-                            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium",
-                            "transition-all duration-150",
-                            isActive
-                              ? "bg-accent-blue-soft text-accent-blue border border-accent-blue/20"
-                              : "text-text-secondary hover:text-text-primary hover:bg-bg-hover border border-transparent",
-                            collapsed && "justify-center px-2"
-                          )}
-                          title={collapsed ? item.label : undefined}
-                        >
-                          <Icon size={18} className="flex-shrink-0" />
-                          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          );
-        })}
+        {navSections.map((section) => (
+          <div key={section.title}>
+            {!collapsed && (
+              <h3 className="px-3 mb-1.5 text-[10px] font-label font-bold text-slate-400 uppercase tracking-widest">
+                {section.title}
+              </h3>
+            )}
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                        isActive
+                          ? "text-blue-700 font-semibold bg-white shadow-sm"
+                          : "text-slate-500 hover:bg-slate-200/50 hover:text-slate-900",
+                        collapsed && "justify-center px-2"
+                      )}
+                      title={collapsed ? item.label : undefined}
+                    >
+                      <span className="material-symbols-outlined text-xl">{item.icon}</span>
+                      {!collapsed && <span>{item.label}</span>}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
+
+      {/* OS Sub-Systems */}
+      {!collapsed && (
+        <div className="mt-auto pt-4 pb-4 px-4 border-t border-slate-200 flex flex-col gap-2">
+          <button
+            onClick={() => setOsExpanded(!osExpanded)}
+            className="text-[10px] font-bold text-slate-400 px-1 uppercase tracking-widest font-label flex items-center justify-between"
+          >
+            <span>Sub-Systems</span>
+            <span className="material-symbols-outlined text-xs">
+              {osExpanded ? "expand_less" : "expand_more"}
+            </span>
+          </button>
+          {osExpanded && (
+            <div className="flex flex-col gap-1">
+              {osSubsystems.map((sub) => {
+                const isActive = pathname === sub.href;
+                return (
+                  <Link
+                    key={sub.href}
+                    href={sub.href}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-1.5 transition-colors text-xs font-mono",
+                      isActive ? "text-blue-600 font-bold" : "text-slate-500 hover:text-slate-900"
+                    )}
+                  >
+                    <span className="material-symbols-outlined text-[10px]">circle</span>
+                    {sub.label}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Collapse Toggle */}
       <button
         onClick={onToggle}
-        className="flex items-center justify-center h-10 border-t border-border text-text-tertiary hover:text-text-secondary transition-colors"
+        className="flex items-center justify-center h-10 border-t border-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
-        {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        <span className="material-symbols-outlined text-lg">
+          {collapsed ? "chevron_right" : "chevron_left"}
+        </span>
       </button>
     </aside>
   );
