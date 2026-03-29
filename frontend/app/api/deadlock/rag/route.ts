@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/db";
 import { jsonResponse } from "@/lib/auth-helpers";
 import { buildRag, detectCycleDfs } from "@/lib/deadlock-detector";
