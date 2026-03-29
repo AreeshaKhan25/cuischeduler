@@ -17,17 +17,19 @@ model Semester {
   endDate   String   @map("end_date")
   isActive  Boolean  @default(false) @map("is_active")
 
-  courseOfferings  CourseOffering[]
-  timetableEntries TimetableEntry[]
-  changeRequests   ChangeRequest[]
+  courseOfferings   CourseOffering[]
+  timetableEntries  TimetableEntry[]
+  changeRequests    ChangeRequest[]
+  resourceRequests  ResourceRequest[]
 
   @@map("semesters")
 }
 
 model Course {
   id          Int     @id @default(autoincrement())
-  code        String  @unique           // "CSC341"
-  name        String                    // "Operating Systems"
+  code        String  @unique           // "CSC341" or auto-generated
+  name        String  @unique           // "Operating Systems"
+  shortName   String? @map("short_name") // "OS"
   creditHours Int     @default(3) @map("credit_hours")
   isLab       Boolean @default(false) @map("is_lab")
   isTechnical Boolean @default(true) @map("is_technical")
@@ -135,32 +137,85 @@ model User {
   email          String   @unique
   name           String
   hashedPassword String   @map("hashed_password")
-  role           String   @default("student") // admin, faculty, student
+  role           String   @default("student") // admin, faculty, student, cr
   department     String   @default("Computer Science")
+  designation    String?                       // "Dr.", "Mr.", "Ms." (for faculty)
   sectionId      Int?     @map("section_id")
+  studentId      String?  @map("student_id")  // "FA22-BCS-001"
   createdAt      DateTime @default(now()) @map("created_at")
 
-  facultyOfferings   CourseOffering[] @relation("facultyOfferings")
-  requestedChanges   ChangeRequest[]  @relation("changeRequester")
-  resolvedChanges    ChangeRequest[]  @relation("changeResolver")
+  facultyOfferings    CourseOffering[]  @relation("facultyOfferings")
+  requestedChanges    ChangeRequest[]   @relation("changeRequester")
+  resolvedChanges     ChangeRequest[]   @relation("changeResolver")
+  resourceRequests    ResourceRequest[] @relation("resourceRequester")
+  resolvedRequests    ResourceRequest[] @relation("resourceResolver")
 
   @@map("users")
 }
 
 model Resource {
-  id         Int    @id @default(autoincrement())
-  name       String
-  type       String @default("classroom") // classroom, lab
-  building   String @default("Academic Block")
-  floor      Int    @default(0)
-  capacity   Int    @default(40)
-  status     String @default("available") // available, maintenance
-  features   String @default("{}") // JSON
-  department String @default("General")
+  id         Int     @id @default(autoincrement())
+  name       String  @unique
+  type       String  @default("classroom") // classroom, lab
+  building   String  @default("Academic Block")
+  floor      String  @default("G")
+  capacity   Int     @default(40)
+  status     String  @default("available") // available, maintenance
+  features   String  @default("{}") // JSON
+  department String  @default("General")
+  hasProjector  Boolean @default(false) @map("has_projector")
+  hasWhiteboard Boolean @default(false) @map("has_whiteboard")
+  hasComputers  Boolean @default(false) @map("has_computers")
 
   timetableEntries TimetableEntry[]
+  resourceRequests ResourceRequest[]
 
   @@map("resources")
+}
+
+// ─── Resource Request (dynamic availability check) ───────────────
+
+model ResourceRequest {
+  id               Int      @id @default(autoincrement())
+  requestedById    Int      @map("requested_by_id")
+  resourceId       Int      @map("resource_id")
+  semesterId       Int      @map("semester_id")
+  dayOfWeek        String   @map("day_of_week")
+  slotIndex        Int      @map("slot_index")
+  reason           String
+  status           String   @default("pending") // pending, approved, rejected, conflict, deadlock
+  conflictWith     Int?     @map("conflict_with") // timetable_entry_id that conflicts
+  isDeadlock       Boolean  @default(false) @map("is_deadlock")
+  deadlockDetails  String?  @map("deadlock_details") // JSON: cycle info
+  adminNote        String?  @map("admin_note")
+  resolvedById     Int?     @map("resolved_by_id")
+  resolvedAt       DateTime? @map("resolved_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  requestedBy User     @relation("resourceRequester", fields: [requestedById], references: [id])
+  resolvedBy  User?    @relation("resourceResolver", fields: [resolvedById], references: [id])
+  resource    Resource @relation(fields: [resourceId], references: [id])
+  semester    Semester @relation(fields: [semesterId], references: [id])
+
+  @@map("resource_requests")
+}
+
+// ─── OS Scenario (dynamic OS concept tracking) ───────────────────
+
+model OSScenario {
+  id          Int      @id @default(autoincrement())
+  type        String              // "deadlock", "scheduling", "concurrency", "memory"
+  title       String
+  description String
+  data        String   @default("{}") // JSON: scenario-specific data
+  source      String   @default("manual") // "manual", "system", "simulation"
+  sourceId    Int?     @map("source_id") // reference to resource_request, change_request, etc.
+  status      String   @default("active") // active, resolved, archived
+  resolution  String?                     // how it was resolved
+  createdAt   DateTime @default(now()) @map("created_at")
+  resolvedAt  DateTime? @map("resolved_at")
+
+  @@map("os_scenarios")
 }
 
 model Notification {

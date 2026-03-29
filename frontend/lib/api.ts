@@ -79,8 +79,24 @@ export const resourcesApi = {
   create: (data: Record<string, unknown>) => api.post("/resources", data),
   update: (id: number, data: Record<string, unknown>) => api.put(`/resources/${id}`, data),
   delete: (id: number) => api.delete(`/resources/${id}`),
+  checkAvailability: (params: { resource_id: number; day: string; slot: number; semester_id?: number }) =>
+    api.get("/resources/check-availability", { params }),
   getAvailability: (params?: Record<string, unknown>) => api.get("/resources/availability", { params }),
   getPoolState: () => api.get("/resources/pool-state"),
+};
+
+// ─── Resource Requests (dynamic conflict/deadlock) ─────────────
+export const resourceRequestsApi = {
+  getAll: (params?: Record<string, unknown>) => api.get("/resource-requests", { params }),
+  getById: (id: number) => api.get(`/resource-requests/${id}`),
+  create: (data: Record<string, unknown>) => api.post("/resource-requests", data),
+  resolve: (id: number, data: { status: string; adminNote?: string }) => api.patch(`/resource-requests/${id}`, data),
+};
+
+// ─── OS Scenarios (dynamic OS concepts) ────────────────────────
+export const osScenariosApi = {
+  getAll: (params?: Record<string, unknown>) => api.get("/os-scenarios", { params }),
+  create: (data: Record<string, unknown>) => api.post("/os-scenarios", data),
 };
 
 // ─── Dashboard ─────────────────────────────────────────────────
